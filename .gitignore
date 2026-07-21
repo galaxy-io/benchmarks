@@ -36,3 +36,6 @@ go.work.sum
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
+
+# Results
+**/results/*.json
