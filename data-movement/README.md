@@ -15,7 +15,7 @@ harness, pointed at the same source and destination, and torn down after.
 | SUT | How it runs | Comparison | Status |
 |-----|-------------|------------|--------|
 | filament | Standalone image, driven over its API | Measured | ✅ |
-| Ingestr | CLI container | Measured | ❌ |
+| Ingestr | CLI container | Measured | ✅ |
 | Debezium | Debezium Server container | Measured | ❌ |
 | Airbyte | abctl, pinned connectors | Measured | ❌ |
 | dlt | Python container | Measured | ❌ |
