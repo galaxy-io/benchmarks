@@ -35,9 +35,12 @@ func (g *Ingestr) Name() string { return "ingestr" }
 func (g *Ingestr) Image() string { return Image }
 
 // Config reports the configuration, nil for defaults.
-func (g *Ingestr) Config() map[string]any { return nil }
+func (g *Ingestr) Config() map[string]any { return map[string]any{"tableParallel": true} }
 
-// Setup creates the container, unstarted, with one ingest command per table.
+// Setup creates the container, unstarted, with every table's ingest command
+// launched at once. Ingestr has no cross-table orchestration of its own and
+// its vendor benchmark uses a single table; running the commands in parallel
+// is the strongest configuration a user can reach with shell alone.
 func (g *Ingestr) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	if runtime.GOARCH != "amd64" {
 		return errors.New("ingestr's official image is amd64 only; run on the benchmark machine")
@@ -45,13 +48,15 @@ func (g *Ingestr) Setup(ctx context.Context, env *harness.Env, tables []string) 
 	src := pgURI(env.Source.InternalDSN)
 	dst := pgURI(env.Sink.InternalDSN)
 
-	cmds := make([]string, 0, len(tables))
+	// All table loads launch at once; the script fails if any command failed.
+	var sb strings.Builder
 	for _, t := range tables {
-		cmds = append(cmds, fmt.Sprintf(
-			"ingestr ingest --source-uri '%s' --source-table 'public.%s' --dest-uri '%s' --dest-table 'public.%s' --yes",
-			src, t, dst, t))
+		fmt.Fprintf(&sb,
+			"ingestr ingest --source-uri '%s' --source-table 'public.%s' --dest-uri '%s' --dest-table 'public.%s' --yes &\npids=\"$pids $!\"\n",
+			src, t, dst, t)
 	}
-	script := strings.Join(cmds, " && ")
+	sb.WriteString("fail=0\nfor p in $pids; do wait $p || fail=1; done\nexit $fail")
+	script := sb.String()
 
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{

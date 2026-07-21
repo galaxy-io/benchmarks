@@ -148,6 +148,19 @@ func (f *Filament) createPipeline(ctx context.Context, tables []string) (string,
 		return "", err
 	}
 
+	var created struct {
+		Pipeline struct {
+			ID string `json:"id"`
+		} `json:"pipeline"`
+	}
+	err = f.call(ctx, "CreatePipeline", map[string]any{
+		"tenantId": "t1",
+		"name":     "bench",
+	}, &created)
+	if err != nil {
+		return "", fmt.Errorf("create pipeline: %w", err)
+	}
+
 	edges := make([]map[string]any, 0, len(tables))
 	for _, t := range tables {
 		edges = append(edges, map[string]any{
@@ -157,24 +170,23 @@ func (f *Filament) createPipeline(ctx context.Context, tables []string) (string,
 			"ingestionType": "INGESTION_TYPE_SNAPSHOT_REPLACE",
 		})
 	}
-	var resp struct {
-		Pipeline struct {
+	var version struct {
+		Version struct {
 			ID string `json:"id"`
-		} `json:"pipeline"`
+		} `json:"version"`
 	}
-	err = f.call(ctx, "CreatePipeline", map[string]any{
-		"tenant": "t1",
-		"name":   "bench",
+	err = f.call(ctx, "CreatePipelineVersion", map[string]any{
+		"pipelineId": created.Pipeline.ID,
 		"nodes": []map[string]any{
 			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": "public"}},
 			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{"schema": "public"}},
 		},
 		"edges": edges,
-	}, &resp)
+	}, &version)
 	if err != nil {
-		return "", fmt.Errorf("create pipeline: %w", err)
+		return "", fmt.Errorf("create pipeline version: %w", err)
 	}
-	return resp.Pipeline.ID, nil
+	return created.Pipeline.ID, nil
 }
 
 // createConnection registers a connection whose dsn resolves from ref in the container env.
@@ -185,7 +197,7 @@ func (f *Filament) createConnection(ctx context.Context, kind, name, ref string)
 		} `json:"connection"`
 	}
 	err := f.call(ctx, "CreateConnection", map[string]any{
-		"tenant":     "t1",
+		"tenantId":   "t1",
 		"kind":       kind,
 		"name":       name,
 		"connector":  "postgres",
