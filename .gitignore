@@ -39,3 +39,4 @@ go.work.sum
 
 # Results
 **/results/*.json
+.DS_Store

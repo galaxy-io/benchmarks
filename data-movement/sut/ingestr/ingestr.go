@@ -45,8 +45,8 @@ func (g *Ingestr) Setup(ctx context.Context, env *harness.Env, tables []string) 
 	if runtime.GOARCH != "amd64" {
 		return errors.New("ingestr's official image is amd64 only; run on the benchmark machine")
 	}
-	src := pgURI(env.Source.InternalDSN)
-	dst := pgURI(env.Sink.InternalDSN)
+	src := env.Source.InternalDSN
+	dst := env.Sink.InternalDSN
 
 	// All table loads launch at once; the script fails if any command failed.
 	var sb strings.Builder
@@ -95,10 +95,6 @@ func (g *Ingestr) Run(ctx context.Context) error {
 		return fmt.Errorf("ingestr exited %d:\n%s", state.ExitCode, g.logs(ctx))
 	}
 	return nil
-}
-
-func pgURI(dsn string) string {
-	return strings.Replace(dsn, "postgres://", "postgresql://", 1)
 }
 
 func (g *Ingestr) logs(ctx context.Context) string {
