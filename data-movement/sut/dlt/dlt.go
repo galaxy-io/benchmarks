@@ -23,7 +23,7 @@ import (
 const Image = "python:3.11-slim"
 
 // Requirements is what pip installs during Setup.
-var Requirements = []string{"dlt[postgres,sql-database]", "connectorx", "pyarrow"}
+var Requirements = []string{"dlt[postgres,sql-database]==1.29.0", "connectorx==0.4.5", "pyarrow==25.0.0"}
 
 // pipeline is the script Run executes; DSNs and tables arrive as env vars.
 //
@@ -48,6 +48,7 @@ func (d *Dlt) Image() string { return Image + " + " + strings.Join(Requirements,
 func (d *Dlt) Config() map[string]any {
 	return map[string]any{
 		"backend":          "connectorx",
+		"returnType":       "arrow_stream",
 		"chunkSize":        100000,
 		"loaderFileFormat": "csv",
 		"parallelize":      true,
@@ -67,6 +68,9 @@ func (d *Dlt) Setup(ctx context.Context, env *harness.Env, tables []string) erro
 				"SINK_DSN":   env.Sink.InternalDSN,
 				"TABLES":     strings.Join(tables, ","),
 				// The vendor benchmark's recommended performance settings.
+				// spawn, not fork: connectorx leaves threads in the main
+				// process and forked normalize workers die nondeterministically.
+				"NORMALIZE__START_METHOD":                "spawn",
 				"NORMALIZE__WORKERS":                     "3",
 				"SOURCES__DATA_WRITER__FILE_MAX_BYTES":   "3000000",
 				"SOURCES__DATA_WRITER__BUFFER_MAX_ITEMS": "200000",
