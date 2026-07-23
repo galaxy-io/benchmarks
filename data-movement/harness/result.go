@@ -117,16 +117,17 @@ func CheckParity(ctx context.Context, sourceDSN, sinkDSN string, tables []string
 	return out, pass, nil
 }
 
-// WriteResult writes the result JSON to dir and returns the path.
+// WriteResult writes the result JSON as dir/{date}/{sut}/{scenario}-{route}-{dataset}.json,
+// overwriting any same-day result for the same triple, and returns the path.
 func WriteResult(dir string, r *Result) (string, error) {
 	r.OS = runtime.GOOS
 	r.Arch = runtime.GOARCH
 	r.CPUs = runtime.NumCPU()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	name := fmt.Sprintf("%s-%s-%s.json", r.Scenario, r.Route, r.Dataset)
+	path := filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), r.SUT, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("%s-%s-%s-%s.json", r.StartedAt.UTC().Format("20060102T150405Z"), r.SUT, r.Scenario, r.Route)
-	path := filepath.Join(dir, name)
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return "", err

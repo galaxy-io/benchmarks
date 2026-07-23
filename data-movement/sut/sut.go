@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
+	"github.com/galaxy-io/benchmarks/data-movement/sut/airbyte"
+	"github.com/galaxy-io/benchmarks/data-movement/sut/copy"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/dlt"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/filament"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/ingestr"
@@ -23,7 +25,7 @@ type SUT interface {
 }
 
 // Names lists every SUT, in display order.
-var Names = []string{"filament", "ingestr", "dlt"}
+var Names = []string{"filament", "ingestr", "dlt", "airbyte", "copy"}
 
 // New builds the named SUT, or nil for an unknown name.
 func New(name string) SUT {
@@ -34,6 +36,10 @@ func New(name string) SUT {
 		return ingestr.New()
 	case "dlt":
 		return dlt.New()
+	case "airbyte":
+		return airbyte.New()
+	case "copy":
+		return copy.New()
 	}
 	return nil
 }
