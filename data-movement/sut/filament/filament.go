@@ -18,7 +18,7 @@ import (
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
 
-const Image = "galaxy-io/filament-standalone:latest"
+const Image = "ghcr.io/galaxy-io/filament-standalone:latest"
 
 // Options is the run configuration, recorded in the result document.
 var Options = map[string]any{
@@ -45,15 +45,26 @@ func (f *Filament) Image() string { return Image }
 // Config reports the run options.
 func (f *Filament) Config() map[string]any { return Options }
 
+// Routes lists every route; filament ships both connectors.
+func (f *Filament) Routes() []string { return []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"} }
+
 // Setup starts the container on the env's network and registers a pipeline
 // with one snapshot-replace edge per table.
 func (f *Filament) Setup(ctx context.Context, env *harness.Env, tables []string) error {
+	srcDSN, err := connectorDSN(env.Source)
+	if err != nil {
+		return err
+	}
+	sinkDSN, err := connectorDSN(env.Sink)
+	if err != nil {
+		return err
+	}
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
 			Image: Image,
 			Env: map[string]string{
-				"SOURCE_DSN": env.Source.InternalDSN,
-				"SINK_DSN":   env.Sink.InternalDSN,
+				"SOURCE_DSN": srcDSN,
+				"SINK_DSN":   sinkDSN,
 			},
 			ExposedPorts: []string{"8080/tcp"},
 			Labels:       map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "filament"},
@@ -77,7 +88,7 @@ func (f *Filament) Setup(ctx context.Context, env *harness.Env, tables []string)
 	}
 	f.serverURL = fmt.Sprintf("http://%s:%s", host, port.Port())
 
-	f.pipelineID, err = f.createPipeline(ctx, tables)
+	f.pipelineID, err = f.createPipeline(ctx, env, tables)
 	return err
 }
 
@@ -138,12 +149,12 @@ func (f *Filament) Run(ctx context.Context) error {
 }
 
 // createPipeline registers both connections and the pipeline, returning its id.
-func (f *Filament) createPipeline(ctx context.Context, tables []string) (string, error) {
-	srcID, err := f.createConnection(ctx, "CONNECTOR_KIND_SOURCE", "bench-source", "source/dsn")
+func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables []string) (string, error) {
+	srcID, err := f.createConnection(ctx, "CONNECTOR_KIND_SOURCE", "bench-source", "source/dsn", env.Source.Engine.Name())
 	if err != nil {
 		return "", err
 	}
-	dstID, err := f.createConnection(ctx, "CONNECTOR_KIND_SINK", "bench-sink", "sink/dsn")
+	dstID, err := f.createConnection(ctx, "CONNECTOR_KIND_SINK", "bench-sink", "sink/dsn", env.Sink.Engine.Name())
 	if err != nil {
 		return "", err
 	}
@@ -178,8 +189,8 @@ func (f *Filament) createPipeline(ctx context.Context, tables []string) (string,
 	err = f.call(ctx, "CreatePipelineVersion", map[string]any{
 		"pipelineId": created.Pipeline.ID,
 		"nodes": []map[string]any{
-			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": "public"}},
-			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{"schema": "public"}},
+			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
+			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{"schema": harness.Namespace}},
 		},
 		"edges": edges,
 	}, &version)
@@ -189,8 +200,20 @@ func (f *Filament) createPipeline(ctx context.Context, tables []string) (string,
 	return created.Pipeline.ID, nil
 }
 
+// connectorDSN renders db's internal DSN in the form filament's connector parses:
+// a URL for postgres, the go-sql-driver form for mysql.
+func connectorDSN(db *harness.DB) (string, error) {
+	switch db.Engine {
+	case harness.Postgres:
+		return db.InternalDSN, nil
+	case harness.MySQL:
+		return harness.MySQLDSN(db.InternalDSN)
+	}
+	return "", fmt.Errorf("no connector dsn for engine %v", db.Engine)
+}
+
 // createConnection registers a connection whose dsn resolves from ref in the container env.
-func (f *Filament) createConnection(ctx context.Context, kind, name, ref string) (string, error) {
+func (f *Filament) createConnection(ctx context.Context, kind, name, ref, connector string) (string, error) {
 	var resp struct {
 		Connection struct {
 			ID string `json:"id"`
@@ -200,7 +223,7 @@ func (f *Filament) createConnection(ctx context.Context, kind, name, ref string)
 		"tenantId":   "t1",
 		"kind":       kind,
 		"name":       name,
-		"connector":  "postgres",
+		"connector":  connector,
 		"secretRefs": map[string]string{"dsn": ref},
 	}, &resp)
 	if err != nil {

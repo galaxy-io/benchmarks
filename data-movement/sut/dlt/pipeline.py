@@ -6,18 +6,21 @@ from dlt.sources.sql_database import sql_database
 
 def main():
     tables = os.environ["TABLES"].split(",")
+    src = os.environ["SOURCE_DSN"]
+    # sqlalchemy needs a driver in the scheme; connectorx takes the plain URL.
+    sa_src = src.replace("mysql://", "mysql+pymysql://", 1)
     source = sql_database(
-        os.environ["SOURCE_DSN"],
-        schema="public",
+        sa_src,
+        schema="bench",
         table_names=tables,
         backend="connectorx",
         chunk_size=100000,
-        backend_kwargs={"conn": os.environ["SOURCE_DSN"], "return_type": "arrow_stream"},
+        backend_kwargs={"conn": src, "return_type": "arrow_stream"},
     ).parallelize()
     p = dlt.pipeline(
         pipeline_name="bench",
         destination=dlt.destinations.postgres(os.environ["SINK_DSN"]),
-        dataset_name="public",
+        dataset_name="bench",
     )
     print(p.run(source, write_disposition="replace", loader_file_format="csv"))
 

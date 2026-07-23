@@ -18,7 +18,7 @@ harness, pointed at the same source and destination, and torn down after.
 | Ingestr | CLI container | Measured | ✅ |
 | Debezium | Debezium Server container | Measured | ❌ |
 | Airbyte | Pinned connector images | Measured | ✅ |
-| dlt | Python container | Measured | ❌ |
+| dlt | Python container | Measured | ✅ |
 | Artie | Managed only | Claimed | ❌ |
 | Fivetran | Managed only | Claimed | ❌ |
 | AWS DMS | Managed only | Claimed | ❌ |
@@ -30,7 +30,7 @@ harness, pointed at the same source and destination, and torn down after.
 
 ## Benchmarks
 
-Routes: `pg → pg`, `pg → mysql`, `mysql → mysql`, `mysql → pg`.
+Routes: `pg → pg`, `pg → mysql`, `mysql → mysql`, `mysql → pg`. (where applicable)
 
 | Scenario | Dataset | Routes | Shows |
 |----------|---------|--------|-------|
@@ -59,6 +59,7 @@ Requires Docker and `duckdb`.
 ```sh
 go run ./cmd/bench list                                              # scenarios, routes, suts
 go run ./cmd/bench run -scenario full-load -route pg-pg -sut filament
+go run ./cmd/bench run -sut all -route all                           # sweep every supported pair
 ```
 
 Each run writes one JSON document to `results/`. Official results are produced on a

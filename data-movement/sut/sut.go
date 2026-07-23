@@ -7,10 +7,10 @@ import (
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/airbyte"
-	"github.com/galaxy-io/benchmarks/data-movement/sut/copy"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/dlt"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/filament"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/ingestr"
+	"github.com/galaxy-io/benchmarks/data-movement/sut/native"
 )
 
 // SUT is one system under test. Setup is untimed preparation; Run is the
@@ -19,16 +19,17 @@ type SUT interface {
 	Name() string
 	Image() string
 	Config() map[string]any
+	Routes() []string
 	Setup(ctx context.Context, env *harness.Env, tables []string) error
 	Run(ctx context.Context) error
 	Teardown(ctx context.Context)
 }
 
 // Names lists every SUT, in display order.
-var Names = []string{"filament", "ingestr", "dlt", "airbyte", "copy"}
+var Names = []string{"filament", "ingestr", "dlt", "airbyte", "native"}
 
-// New builds the named SUT, or nil for an unknown name.
-func New(name string) SUT {
+// New builds the named SUT for a route, or nil for an unknown name.
+func New(name, route string) SUT {
 	switch name {
 	case "filament":
 		return filament.New()
@@ -37,9 +38,9 @@ func New(name string) SUT {
 	case "dlt":
 		return dlt.New()
 	case "airbyte":
-		return airbyte.New()
-	case "copy":
-		return copy.New()
+		return airbyte.New(route)
+	case "native":
+		return native.New(route)
 	}
 	return nil
 }
