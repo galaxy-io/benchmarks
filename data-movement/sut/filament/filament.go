@@ -18,7 +18,7 @@ import (
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
 
-const Image = "ghcr.io/galaxy-io/filament-standalone:latest"
+const Image = "ghcr.io/galaxy-io/filament/standalone:latest"
 
 // Options is the run configuration, recorded in the result document.
 var Options = map[string]any{
