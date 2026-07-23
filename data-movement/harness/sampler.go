@@ -88,7 +88,9 @@ func (s *Sampler) sample(ctx context.Context, runID string) {
 		var stats container.StatsResponse
 		err = json.NewDecoder(resp.Body).Decode(&stats)
 		_ = resp.Body.Close()
-		if err != nil {
+		if err != nil || stats.CPUStats.CPUUsage.TotalUsage == 0 {
+			// Exited containers report zeroed stats; folding them in would
+			// wrap the CPU delta and erase the network counters.
 			continue
 		}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/filament"
+	"github.com/galaxy-io/benchmarks/data-movement/sut/ingestr"
 )
 
 // SUT is one system under test. Setup is untimed preparation; Run is the
@@ -21,13 +22,15 @@ type SUT interface {
 }
 
 // Names lists every SUT, in display order.
-var Names = []string{"filament"}
+var Names = []string{"filament", "ingestr"}
 
 // New builds the named SUT, or nil for an unknown name.
 func New(name string) SUT {
 	switch name {
 	case "filament":
 		return filament.New()
+	case "ingestr":
+		return ingestr.New()
 	}
 	return nil
 }
