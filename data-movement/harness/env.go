@@ -78,8 +78,8 @@ func StartPostgres(ctx context.Context, net *tc.DockerNetwork, alias, runID stri
 	}
 	return &DB{
 		Container:   c,
-		DSN:         fmt.Sprintf("postgres://bench:bench@%s:%s/bench?sslmode=disable", host, port.Port()),
-		InternalDSN: fmt.Sprintf("postgres://bench:bench@%s:5432/bench?sslmode=disable", alias),
+		DSN:         fmt.Sprintf("postgresql://bench:bench@%s:%s/bench?sslmode=disable", host, port.Port()),
+		InternalDSN: fmt.Sprintf("postgresql://bench:bench@%s:5432/bench?sslmode=disable", alias),
 	}, nil
 }
 
