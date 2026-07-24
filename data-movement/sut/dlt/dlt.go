@@ -22,8 +22,9 @@ import (
 
 const Image = "python:3.11-slim"
 
-// Requirements is what pip installs during Setup.
-var Requirements = []string{"dlt[postgres,sql-database]==1.29.0", "connectorx==0.4.5", "pyarrow==25.0.0"}
+// Requirements is what pip installs during Setup; pymysql is the sqlalchemy
+// driver for mysql sources.
+var Requirements = []string{"dlt[postgres,sql-database]==1.29.0", "connectorx==0.4.5", "pyarrow==25.0.0", "pymysql==1.2.0"}
 
 // pipeline is the script Run executes; DSNs and tables arrive as env vars.
 //
@@ -55,6 +56,9 @@ func (d *Dlt) Config() map[string]any {
 		"normalizeWorkers": 3,
 	}
 }
+
+// Routes lists routes with a postgres sink; dlt has no native mysql destination.
+func (d *Dlt) Routes() []string { return []string{"pg-pg", "mysql-pg"} }
 
 // Setup starts an idle python container, copies the pipeline script in, and
 // installs dlt; all of it stays outside the timed window.

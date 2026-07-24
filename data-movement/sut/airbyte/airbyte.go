@@ -25,27 +25,59 @@ import (
 )
 
 const (
-	Image       = "docker:28-cli"
-	SourceImage = "airbyte/source-postgres:3.8.1"
-	DestImage   = "airbyte/destination-postgres:3.0.13"
+	Image            = "docker:28-cli"
+	SourcePGImage    = "airbyte/source-postgres:3.8.1"
+	DestPGImage      = "airbyte/destination-postgres:3.0.13"
+	SourceMySQLImage = "airbyte/source-mysql:3.53.1"
+	DestMySQLImage   = "airbyte/destination-mysql:1.1.1"
 )
+
+// sourceImage picks the source connector image for an engine.
+func sourceImage(e harness.Engine) string {
+	switch e {
+	case harness.Postgres:
+		return SourcePGImage
+	case harness.MySQL:
+		return SourceMySQLImage
+	}
+	panic(fmt.Sprintf("no source connector for engine %v", e))
+}
+
+// destImage picks the destination connector image for an engine.
+func destImage(e harness.Engine) string {
+	switch e {
+	case harness.Postgres:
+		return DestPGImage
+	case harness.MySQL:
+		return DestMySQLImage
+	}
+	panic(fmt.Sprintf("no destination connector for engine %v", e))
+}
 
 // Airbyte pipes the source connector into the destination connector.
 type Airbyte struct {
+	srcImage  string
+	dstImage  string
 	container tc.Container
 	volume    string
 	network   string
 	script    string
 }
 
-// New returns the airbyte tool.
-func New() *Airbyte { return &Airbyte{} }
+// New returns the airbyte tool with the route's connector images pinned.
+func New(route string) *Airbyte {
+	src, dst, _ := harness.ParseRoute(route)
+	return &Airbyte{srcImage: sourceImage(src), dstImage: destImage(dst)}
+}
 
 // Name identifies the tool.
 func (a *Airbyte) Name() string { return "airbyte" }
 
 // Image reports the images under test.
-func (a *Airbyte) Image() string { return SourceImage + " | " + DestImage }
+func (a *Airbyte) Image() string { return a.srcImage + " | " + a.dstImage }
+
+// Routes lists every route; airbyte ships connectors for both engines.
+func (a *Airbyte) Routes() []string { return []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"} }
 
 // Config reports the sync configuration.
 func (a *Airbyte) Config() map[string]any {
@@ -60,11 +92,11 @@ func (a *Airbyte) Config() map[string]any {
 // volume, pulls both connector images, and discovers the catalog; all of it
 // stays outside the timed window.
 func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) error {
-	srcCfg, err := sourceConfig(env.Source.InternalDSN)
+	srcCfg, err := sourceConfig(env.Source)
 	if err != nil {
 		return fmt.Errorf("source config: %w", err)
 	}
-	dstCfg, err := destConfig(env.Sink.InternalDSN)
+	dstCfg, err := destConfig(env.Sink)
 	if err != nil {
 		return fmt.Errorf("destination config: %w", err)
 	}
@@ -94,7 +126,7 @@ func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) 
 			return fmt.Errorf("copy %s: %w", name, err)
 		}
 	}
-	for _, img := range []string{SourceImage, DestImage} {
+	for _, img := range []string{a.srcImage, a.dstImage} {
 		code, out, err := a.exec(ctx, []string{"docker", "pull", "-q", img})
 		if err != nil {
 			return fmt.Errorf("pull %s: %w", img, err)
@@ -118,9 +150,12 @@ func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) 
 			"docker run --rm -i --network %s -v %s:/secrets -l %s=%s -l %s=%s %s %s --config /secrets/%s.json --catalog /secrets/catalog.json",
 			env.Net.Name, a.volume, harness.LabelRun, env.RunID, harness.LabelRole, role, image, verb, cfg)
 	}
+	// The platform's worker forwards only RECORD and STATE to the
+	// destination; it rejects LOG and TRACE, so the pipe filters the same way.
 	a.script = "set -o pipefail\n" +
-		connector(SourceImage, "airbyte-source", "read", "source") + " | " +
-		connector(DestImage, "airbyte-destination", "write", "destination")
+		connector(a.srcImage, "airbyte-source", "read", "source") +
+		` | grep -E '"type":"(RECORD|STATE)"' | ` +
+		connector(a.dstImage, "airbyte-destination", "write", "destination")
 	return nil
 }
 
@@ -151,7 +186,7 @@ func (a *Airbyte) Run(ctx context.Context) error {
 // discover runs the source's discover command and returns the configured
 // catalog for the seeded tables: full refresh, overwrite, one generation.
 func (a *Airbyte) discover(ctx context.Context, tables []string) ([]byte, error) {
-	cmd := fmt.Sprintf("docker run --rm --network %s -v %s:/secrets %s discover --config /secrets/source.json", a.network, a.volume, SourceImage)
+	cmd := fmt.Sprintf("docker run --rm --network %s -v %s:/secrets %s discover --config /secrets/source.json", a.network, a.volume, a.srcImage)
 	code, out, err := a.exec(ctx, []string{"sh", "-c", cmd})
 	if err != nil {
 		return nil, fmt.Errorf("discover: %w", err)
@@ -211,44 +246,73 @@ func (a *Airbyte) discover(ctx context.Context, tables []string) ([]byte, error)
 	return json.Marshal(catalog)
 }
 
-// sourceConfig renders the source connector's config JSON from a DSN.
-func sourceConfig(dsn string) ([]byte, error) {
-	host, port, db, user, pass, err := splitDSN(dsn)
+// sourceConfig renders the source connector's config JSON for db's engine.
+func sourceConfig(db *harness.DB) ([]byte, error) {
+	host, port, name, user, pass, err := splitDSN(db.InternalDSN)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]any{
-		"host":               host,
-		"port":               port,
-		"database":           db,
-		"schemas":            []string{"public"},
-		"username":           user,
-		"password":           pass,
-		"ssl_mode":           map[string]any{"mode": "disable"},
-		"tunnel_method":      map[string]any{"tunnel_method": "NO_TUNNEL"},
-		"replication_method": map[string]any{"method": "Standard"},
-	})
+	switch db.Engine {
+	case harness.Postgres:
+		return json.Marshal(map[string]any{
+			"host":               host,
+			"port":               port,
+			"database":           name,
+			"schemas":            []string{harness.Namespace},
+			"username":           user,
+			"password":           pass,
+			"ssl_mode":           map[string]any{"mode": "disable"},
+			"tunnel_method":      map[string]any{"tunnel_method": "NO_TUNNEL"},
+			"replication_method": map[string]any{"method": "Standard"},
+		})
+	case harness.MySQL:
+		return json.Marshal(map[string]any{
+			"host":               host,
+			"port":               port,
+			"database":           name,
+			"username":           user,
+			"password":           pass,
+			"ssl_mode":           map[string]any{"mode": "preferred"},
+			"tunnel_method":      map[string]any{"tunnel_method": "NO_TUNNEL"},
+			"replication_method": map[string]any{"method": "STANDARD"},
+		})
+	}
+	return nil, fmt.Errorf("no source config for engine %v", db.Engine)
 }
 
-// destConfig renders the destination connector's config JSON from a DSN.
-func destConfig(dsn string) ([]byte, error) {
-	host, port, db, user, pass, err := splitDSN(dsn)
+// destConfig renders the destination connector's config JSON for db's engine.
+func destConfig(db *harness.DB) ([]byte, error) {
+	host, port, name, user, pass, err := splitDSN(db.InternalDSN)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]any{
-		"host":          host,
-		"port":          port,
-		"database":      db,
-		"schema":        "public",
-		"username":      user,
-		"password":      pass,
-		"ssl_mode":      map[string]any{"mode": "disable"},
-		"tunnel_method": map[string]any{"tunnel_method": "NO_TUNNEL"},
-	})
+	switch db.Engine {
+	case harness.Postgres:
+		return json.Marshal(map[string]any{
+			"host":          host,
+			"port":          port,
+			"database":      name,
+			"schema":        harness.Namespace,
+			"username":      user,
+			"password":      pass,
+			"ssl_mode":      map[string]any{"mode": "disable"},
+			"tunnel_method": map[string]any{"tunnel_method": "NO_TUNNEL"},
+		})
+	case harness.MySQL:
+		return json.Marshal(map[string]any{
+			"host":          host,
+			"port":          port,
+			"database":      name,
+			"username":      user,
+			"password":      pass,
+			"ssl":           true,
+			"tunnel_method": map[string]any{"tunnel_method": "NO_TUNNEL"},
+		})
+	}
+	return nil, fmt.Errorf("no destination config for engine %v", db.Engine)
 }
 
-// splitDSN breaks a postgres URL into the parts the connector configs need.
+// splitDSN breaks a database URL into the parts the connector configs need.
 func splitDSN(dsn string) (host string, port int, db, user, pass string, err error) {
 	u, err := url.Parse(dsn)
 	if err != nil {

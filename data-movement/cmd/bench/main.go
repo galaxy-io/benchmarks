@@ -19,7 +19,7 @@ import (
 
 var (
 	scenarios = []string{"full-load"}
-	routes    = []string{"pg-pg"}
+	routes    = []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"}
 )
 
 func main() {
@@ -30,7 +30,10 @@ func main() {
 	case "list":
 		fmt.Println("scenarios: " + strings.Join(scenarios, ", "))
 		fmt.Println("routes:    " + strings.Join(routes, ", "))
-		fmt.Println("suts:      " + strings.Join(sut.Names, ", "))
+		fmt.Println("suts:")
+		for _, n := range sut.Names {
+			fmt.Printf("  %-10s %s\n", n, strings.Join(sut.New(n, routes[0]).Routes(), ", "))
+		}
 	case "run":
 		if err := run(os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -49,8 +52,8 @@ func usage() {
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	scenario := fs.String("scenario", scenarios[0], "scenario to run")
-	route := fs.String("route", routes[0], "source-to-destination route")
-	sutName := fs.String("sut", sut.Names[0], "system under test")
+	route := fs.String("route", routes[0], "source-to-destination route, or all")
+	sutName := fs.String("sut", sut.Names[0], "system under test, or all")
 	sf := fs.Float64("sf", 0.01, "TPC-H scale factor")
 	reps := fs.Int("reps", 1, "repetitions, each with fresh containers and seed")
 	out := fs.String("out", "results", "directory for result JSON")
@@ -63,8 +66,8 @@ func run(args []string) error {
 		known     []string
 	}{
 		{"scenario", *scenario, scenarios},
-		{"route", *route, routes},
-		{"sut", *sutName, sut.Names},
+		{"route", *route, append([]string{"all"}, routes...)},
+		{"sut", *sutName, append([]string{"all"}, sut.Names...)},
 	} {
 		if !slices.Contains(c.known, c.val) {
 			return fmt.Errorf("unknown %s %q (known: %s)", c.name, c.val, strings.Join(c.known, ", "))
@@ -74,21 +77,61 @@ func run(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	meta := sut.New(*sutName)
+	sweep := *sutName == "all" || *route == "all"
+	sutList := []string{*sutName}
+	if *sutName == "all" {
+		sutList = sut.Names
+	}
+	routeList := []string{*route}
+	if *route == "all" {
+		routeList = routes
+	}
+
+	var failed []string
+	for _, sn := range sutList {
+		for _, rt := range routeList {
+			meta := sut.New(sn, rt)
+			if !slices.Contains(meta.Routes(), rt) {
+				if !sweep {
+					return fmt.Errorf("sut %q does not run route %q (runs: %s)",
+						sn, rt, strings.Join(meta.Routes(), ", "))
+				}
+				log.Printf("skip %s %s: route not supported", sn, rt)
+				continue
+			}
+			if err := runCombo(ctx, *scenario, rt, sn, *sf, *reps, *out); err != nil {
+				if !sweep {
+					return err
+				}
+				log.Printf("FAIL %s %s: %v", sn, rt, err)
+				failed = append(failed, sn+"/"+rt)
+			}
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("failed: %s", strings.Join(failed, ", "))
+	}
+	return nil
+}
+
+// runCombo benchmarks one sut on one route and writes its result JSON.
+func runCombo(ctx context.Context, scenario, route, sutName string, sf float64, reps int, out string) error {
+	meta := sut.New(sutName, route)
 	result := &harness.Result{
 		SUT:       meta.Name(),
-		Scenario:  *scenario,
-		Route:     *route,
-		Dataset:   fmt.Sprintf("tpch-sf%v", *sf),
+		Scenario:  scenario,
+		Route:     route,
+		Dataset:   fmt.Sprintf("tpch-sf%v", sf),
 		Image:     meta.Image(),
 		Native:    true,
 		Config:    meta.Config(),
 		StartedAt: time.Now(),
 	}
 
-	for i := range *reps {
-		log.Printf("rep %d/%d", i+1, *reps)
-		rep, rows, err := runOnce(ctx, sut.New(*sutName), *route, *sf)
+	log.Printf("run %s %s %s", sutName, scenario, route)
+	for i := range reps {
+		log.Printf("rep %d/%d", i+1, reps)
+		rep, rows, err := runOnce(ctx, sut.New(sutName, route), route, sf)
 		if err != nil {
 			return fmt.Errorf("rep %d: %w", i+1, err)
 		}
@@ -98,11 +141,11 @@ func run(args []string) error {
 		result.Rows = rows
 		result.Reps = append(result.Reps, rep)
 		log.Printf("rep %d/%d: %.3fs (%.0f rows/s), parity pass=%v",
-			i+1, *reps, rep.WallSeconds, rep.RowsPerSec, rep.ParityPass)
+			i+1, reps, rep.WallSeconds, rep.RowsPerSec, rep.ParityPass)
 	}
 	result.Aggregate()
 
-	path, err := harness.WriteResult(*out, result)
+	path, err := harness.WriteResult(out, result)
 	if err != nil {
 		return err
 	}
@@ -145,7 +188,7 @@ func runOnce(ctx context.Context, s sut.SUT, route string, sf float64) (harness.
 	}
 	defer env.Terminate(context.Background())
 
-	tables, err := datasets.SeedTPCH(ctx, env.Source.DSN, sf)
+	tables, err := datasets.SeedTPCH(ctx, env.Source, sf)
 	if err != nil {
 		return rep, 0, fmt.Errorf("seed: %w", err)
 	}
@@ -172,7 +215,7 @@ func runOnce(ctx context.Context, s sut.SUT, route string, sf float64) (harness.
 	wall := time.Since(started)
 	resources := stopSampler(sampler)
 
-	parity, pass, err := harness.CheckParity(ctx, env.Source.DSN, env.Sink.DSN, names)
+	parity, pass, err := harness.CheckParity(ctx, env.Source, env.Sink, names)
 	if err != nil {
 		return rep, 0, err
 	}

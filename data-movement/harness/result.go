@@ -9,8 +9,6 @@ import (
 	"runtime"
 	"sort"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // TableParity is one table's row counts on both sides.
@@ -87,27 +85,28 @@ func median(s []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
-// CheckParity counts every table on both sides.
-func CheckParity(ctx context.Context, sourceDSN, sinkDSN string, tables []string) ([]TableParity, bool, error) {
-	src, err := pgx.Connect(ctx, sourceDSN)
+// CheckParity counts every table on both sides in the bench namespace.
+func CheckParity(ctx context.Context, source, sink *DB, tables []string) ([]TableParity, bool, error) {
+	src, err := source.Open()
 	if err != nil {
 		return nil, false, err
 	}
-	defer func() { _ = src.Close(ctx) }()
-	dst, err := pgx.Connect(ctx, sinkDSN)
+	defer func() { _ = src.Close() }()
+	dst, err := sink.Open()
 	if err != nil {
 		return nil, false, err
 	}
-	defer func() { _ = dst.Close(ctx) }()
+	defer func() { _ = dst.Close() }()
 
 	pass := true
 	out := make([]TableParity, 0, len(tables))
 	for _, t := range tables {
 		p := TableParity{Table: t}
-		if err := src.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %q", t)).Scan(&p.Source); err != nil {
+		q := fmt.Sprintf("SELECT count(*) FROM %s.%s", Namespace, t)
+		if err := src.QueryRowContext(ctx, q).Scan(&p.Source); err != nil {
 			return nil, false, fmt.Errorf("count source %s: %w", t, err)
 		}
-		if err := dst.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %q", t)).Scan(&p.Sink); err != nil {
+		if err := dst.QueryRowContext(ctx, q).Scan(&p.Sink); err != nil {
 			p.Sink = -1
 		}
 		p.Match = p.Source == p.Sink

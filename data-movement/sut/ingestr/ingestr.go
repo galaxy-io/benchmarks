@@ -37,6 +37,9 @@ func (g *Ingestr) Image() string { return Image }
 // Config reports the configuration, nil for defaults.
 func (g *Ingestr) Config() map[string]any { return map[string]any{"tableParallel": true} }
 
+// Routes lists every route; ingestr speaks both engines on both sides.
+func (g *Ingestr) Routes() []string { return []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"} }
+
 // Setup creates the container, unstarted, with every table's ingest command
 // launched at once. Ingestr has no cross-table orchestration of its own and
 // its vendor benchmark uses a single table; running the commands in parallel
@@ -52,8 +55,8 @@ func (g *Ingestr) Setup(ctx context.Context, env *harness.Env, tables []string) 
 	var sb strings.Builder
 	for _, t := range tables {
 		fmt.Fprintf(&sb,
-			"ingestr ingest --source-uri '%s' --source-table 'public.%s' --dest-uri '%s' --dest-table 'public.%s' --yes &\npids=\"$pids $!\"\n",
-			src, t, dst, t)
+			"ingestr ingest --source-uri '%s' --source-table '%s.%s' --dest-uri '%s' --dest-table '%s.%s' --yes &\npids=\"$pids $!\"\n",
+			src, harness.Namespace, t, dst, harness.Namespace, t)
 	}
 	sb.WriteString("fail=0\nfor p in $pids; do wait $p || fail=1; done\nexit $fail")
 	script := sb.String()
