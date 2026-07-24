@@ -16,7 +16,7 @@ harness, pointed at the same source and destination, and torn down after.
 |-----|-------------|------------|--------|
 | filament | Standalone image | Measured | ✅ |
 | Ingestr | CLI container | Measured | ✅ |
-| Debezium | Debezium Server container | Measured | ❌ |
+| Debezium\* | Debezium Server container, JDBC sink | Measured | ✅ |
 | Airbyte | Pinned connector images | Measured | ✅ |
 | dlt | Python container | Measured | ✅ |
 | Artie | Managed only | Claimed | ❌ |
@@ -27,6 +27,9 @@ harness, pointed at the same source and destination, and torn down after.
   pinned images, identical resource caps, fresh containers per repetition.
 - **Claimed**: the vendor's published number, cited. Filament runs on matching
   infrastructure: same instance class, dataset, and workload.
+
+\* Debezium is a CDC engine; a full load measures its initial snapshot, the
+first step of every deployment, not the steady-state streaming it is built for.
 
 ## Benchmarks
 
