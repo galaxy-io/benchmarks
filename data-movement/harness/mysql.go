@@ -26,8 +26,9 @@ func (mysqlEngine) Name() string { return "mysql" }
 func (e mysqlEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error) {
 	grants := "GRANT ALL PRIVILEGES ON *.* TO 'bench'@'%'; FLUSH PRIVILEGES;\n"
 	req := tc.ContainerRequest{
-		Image:        MySQLImage,
-		Cmd:          []string{"--local-infile=ON"},
+		Image: MySQLImage,
+		// Sized for the benchmark machine; stock 128MB punishes non-sequential writers.
+		Cmd:          []string{"--local-infile=ON", "--innodb-buffer-pool-size=8G", "--innodb-redo-log-capacity=2G"},
 		ExposedPorts: []string{"3306/tcp"},
 		Env: map[string]string{
 			"MYSQL_ROOT_PASSWORD": "bench",

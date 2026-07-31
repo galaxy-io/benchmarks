@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/moby/moby/api/types/container"
 	tc "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -23,7 +24,15 @@ func (postgresEngine) Name() string { return "postgres" }
 // Start runs a postgres container on net; the alias doubles as the sampler role.
 func (e postgresEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error) {
 	req := tc.ContainerRequest{
-		Image:        PostgresImage,
+		Image: PostgresImage,
+		// Sized for the benchmark machine; durability settings stay stock.
+		Cmd: []string{
+			"-c", "shared_buffers=8GB",
+			"-c", "max_wal_size=8GB",
+			"-c", "checkpoint_completion_target=0.9",
+			"-c", "work_mem=64MB",
+			"-c", "maintenance_work_mem=1GB",
+		},
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "bench",
@@ -33,6 +42,9 @@ func (e postgresEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias,
 		Labels:         map[string]string{LabelRun: runID, LabelRole: alias},
 		Networks:       []string{net.Name},
 		NetworkAliases: map[string][]string{net.Name: {alias}},
+		HostConfigModifier: func(hc *container.HostConfig) {
+			hc.ShmSize = 1 << 30
+		},
 		WaitingFor: wait.ForLog("database system is ready to accept connections").
 			WithOccurrence(2).WithStartupTimeout(60 * time.Second),
 	}
