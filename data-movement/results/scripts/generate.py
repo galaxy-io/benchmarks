@@ -91,22 +91,29 @@ def bar_rows(items, unit_fmt, single=False, rate=None):
         </div>''')
     return "\n".join(out)
 
+# display order and names follow the data path: source db, the tool's
+# containers, sink db. airbyte's stripped connector roles would otherwise
+# collide with the database rows.
+CTR_ORDER = {"source": 0, "airbyte-source": 1, "airbyte-destination": 2, "airbyte": 3, "sink": 9}
+CTR_NAME = {"airbyte": "driver", "airbyte-source": "connector (source)", "airbyte-destination": "connector (destination)"}
+
+def ctr_order(u):
+    return CTR_ORDER.get(u["role"], 5)
+
 def containers_table(route_runs):
     rows = []
     for gi, d in enumerate(route_runs):
         last_group = gi == len(route_runs) - 1
         rep = median_rep(d)
-        res = tool_roles(rep) + db_roles(rep)
+        res = sorted(rep.get("resources", []), key=ctr_order)
         n = len(res)
         first = True
         for u in res:
-            dim = "" if first else " dim"
+            dim = " dim" if u["role"] in ("source", "sink") else ""
             cls = ' class="lastgroup"' if last_group else ""
             lead = (f'<td rowspan="{n}"{cls}><span class="swatch {sut_class(d["sut"])}"></span>{disp(d["sut"])}</td>\n              '
                     if first else "")
-            role = u["role"].replace("airbyte-", "")
-            if u["role"] == d["sut"] or (d["sut"] == "airbyte" and u["role"] == "airbyte"):
-                role = u["role"] if u["role"] != "airbyte" else "driver"
+            role = CTR_NAME.get(u["role"], u["role"])
             rows.append(f'''            <tr>
               {lead}<td class="mono{dim}">{role}</td>
               <td class="num mono{dim}">{u["cpuSeconds"]:.2f}s</td>
