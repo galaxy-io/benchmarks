@@ -1,0 +1,274 @@
+{
+  "sut": "dlt",
+  "scenario": "full-load",
+  "route": "pg-pg",
+  "dataset": "tpch-sf0.01",
+  "rows": 86805,
+  "image": "python:3.11-slim + dlt[postgres,sql-database]==1.29.0 connectorx==0.4.5 pyarrow==25.0.0 pymysql==1.2.0",
+  "native": true,
+  "config": {
+    "backend": "connectorx",
+    "chunkSize": 100000,
+    "loaderFileFormat": "csv",
+    "normalizeWorkers": 3,
+    "parallelize": true,
+    "returnType": "arrow_stream"
+  },
+  "startedAt": "2026-07-30T17:52:10.623458503Z",
+  "reps": [
+    {
+      "setupSeconds": 11.54041006,
+      "wallSeconds": 3.527008219,
+      "rowsPerSec": 24611.510552309264,
+      "resources": [
+        {
+          "role": "dlt",
+          "cpuSeconds": 4.796542,
+          "peakMemBytes": 978509824,
+          "netRxBytes": 129816900,
+          "netTxBytes": 13903585,
+          "samples": 9
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 0.257242,
+          "peakMemBytes": 285851648,
+          "netRxBytes": 13582083,
+          "netTxBytes": 52122,
+          "samples": 9
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 0.119609,
+          "peakMemBytes": 288051200,
+          "netRxBytes": 10836499,
+          "netTxBytes": 15588759,
+          "samples": 9
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 100,
+          "sink": 100,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 1500,
+          "sink": 1500,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 2000,
+          "sink": 2000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 8000,
+          "sink": 8000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 15000,
+          "sink": 15000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 60175,
+          "sink": 60175,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 10.832760773,
+      "wallSeconds": 3.522873195,
+      "rowsPerSec": 24640.398673219916,
+      "resources": [
+        {
+          "role": "dlt",
+          "cpuSeconds": 4.816898,
+          "peakMemBytes": 979095552,
+          "netRxBytes": 129959852,
+          "netTxBytes": 14016624,
+          "samples": 9
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 0.266543,
+          "peakMemBytes": 285409280,
+          "netRxBytes": 13585205,
+          "netTxBytes": 54102,
+          "samples": 9
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 0.125349,
+          "peakMemBytes": 288223232,
+          "netRxBytes": 10834915,
+          "netTxBytes": 15588165,
+          "samples": 9
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 100,
+          "sink": 100,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 1500,
+          "sink": 1500,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 2000,
+          "sink": 2000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 8000,
+          "sink": 8000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 15000,
+          "sink": 15000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 60175,
+          "sink": 60175,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 10.753714244,
+      "wallSeconds": 3.523720059,
+      "rowsPerSec": 24634.476787760057,
+      "resources": [
+        {
+          "role": "dlt",
+          "cpuSeconds": 4.955527,
+          "peakMemBytes": 960684032,
+          "netRxBytes": 129804932,
+          "netTxBytes": 13890541,
+          "samples": 9
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 0.255854,
+          "peakMemBytes": 285351936,
+          "netRxBytes": 13588443,
+          "netTxBytes": 56742,
+          "samples": 9
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 0.113337,
+          "peakMemBytes": 288202752,
+          "netRxBytes": 10832407,
+          "netTxBytes": 15587307,
+          "samples": 9
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 100,
+          "sink": 100,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 1500,
+          "sink": 1500,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 2000,
+          "sink": 2000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 8000,
+          "sink": 8000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 15000,
+          "sink": 15000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 60175,
+          "sink": 60175,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    }
+  ],
+  "medianWallSeconds": 3.523720059,
+  "minWallSeconds": 3.522873195,
+  "maxWallSeconds": 3.527008219,
+  "medianRowsPerSec": 24634.476787760057,
+  "parityPass": true,
+  "os": "linux",
+  "arch": "amd64",
+  "cpus": 8
+}

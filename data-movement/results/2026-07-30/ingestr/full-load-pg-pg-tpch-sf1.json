@@ -1,0 +1,433 @@
+{
+  "sut": "ingestr",
+  "scenario": "full-load",
+  "route": "pg-pg",
+  "dataset": "tpch-sf1",
+  "rows": 8661245,
+  "image": "ghcr.io/bruin-data/ingestr:latest",
+  "native": true,
+  "config": {
+    "tableParallel": true
+  },
+  "startedAt": "2026-07-30T18:52:38.485068235Z",
+  "reps": [
+    {
+      "setupSeconds": 11.694395833,
+      "wallSeconds": 68.188397171,
+      "rowsPerSec": 127019.33700362091,
+      "resources": [
+        {
+          "role": "ingestr",
+          "cpuSeconds": 8.293718,
+          "peakMemBytes": 1011978240,
+          "netRxBytes": 1555202683,
+          "netTxBytes": 1629955367,
+          "samples": 133
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 36.571799,
+          "peakMemBytes": 8365318144,
+          "netRxBytes": 1622902362,
+          "netTxBytes": 2527126,
+          "samples": 135
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 8.986498,
+          "peakMemBytes": 4720246784,
+          "netRxBytes": 1125516274,
+          "netTxBytes": 1556194643,
+          "samples": 135
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 11.813103235,
+      "wallSeconds": 68.159870179,
+      "rowsPerSec": 127072.49848413772,
+      "resources": [
+        {
+          "role": "sink",
+          "cpuSeconds": 36.342384,
+          "peakMemBytes": 8375934976,
+          "netRxBytes": 1622916967,
+          "netTxBytes": 2561943,
+          "samples": 134
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 9.071231,
+          "peakMemBytes": 4718743552,
+          "netRxBytes": 1125584012,
+          "netTxBytes": 1556473311,
+          "samples": 134
+        },
+        {
+          "role": "ingestr",
+          "cpuSeconds": 8.335212,
+          "peakMemBytes": 1010515968,
+          "netRxBytes": 1555464386,
+          "netTxBytes": 1630033406,
+          "samples": 132
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 11.981926025,
+      "wallSeconds": 68.192770363,
+      "rowsPerSec": 127011.19127284225,
+      "resources": [
+        {
+          "role": "source",
+          "cpuSeconds": 8.990637,
+          "peakMemBytes": 4718518272,
+          "netRxBytes": 1125062620,
+          "netTxBytes": 1555713601,
+          "samples": 134
+        },
+        {
+          "role": "ingestr",
+          "cpuSeconds": 8.337899,
+          "peakMemBytes": 1009852416,
+          "netRxBytes": 1554678903,
+          "netTxBytes": 1629486506,
+          "samples": 132
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 36.021022,
+          "peakMemBytes": 8377958400,
+          "netRxBytes": 1622836796,
+          "netTxBytes": 2422031,
+          "samples": 134
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 11.71745513,
+      "wallSeconds": 68.201020333,
+      "rowsPerSec": 126995.8273015622,
+      "resources": [
+        {
+          "role": "sink",
+          "cpuSeconds": 35.580253,
+          "peakMemBytes": 8398061568,
+          "netRxBytes": 1622969794,
+          "netTxBytes": 2483657,
+          "samples": 135
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 8.765139,
+          "peakMemBytes": 4718657536,
+          "netRxBytes": 1125792306,
+          "netTxBytes": 1556458753,
+          "samples": 135
+        },
+        {
+          "role": "ingestr",
+          "cpuSeconds": 8.178284,
+          "peakMemBytes": 987152384,
+          "netRxBytes": 1555532975,
+          "netTxBytes": 1630377233,
+          "samples": 133
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 11.722912576,
+      "wallSeconds": 68.16842782,
+      "rowsPerSec": 127056.54621917022,
+      "resources": [
+        {
+          "role": "sink",
+          "cpuSeconds": 35.542776,
+          "peakMemBytes": 8390701056,
+          "netRxBytes": 1623021986,
+          "netTxBytes": 2648909,
+          "samples": 135
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 8.81752,
+          "peakMemBytes": 4718477312,
+          "netRxBytes": 1124777778,
+          "netTxBytes": 1555432832,
+          "samples": 135
+        },
+        {
+          "role": "ingestr",
+          "cpuSeconds": 8.078653,
+          "peakMemBytes": 1002901504,
+          "netRxBytes": 1554757682,
+          "netTxBytes": 1629460969,
+          "samples": 133
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    }
+  ],
+  "medianWallSeconds": 68.188397171,
+  "minWallSeconds": 68.159870179,
+  "maxWallSeconds": 68.201020333,
+  "medianRowsPerSec": 127019.33700362091,
+  "parityPass": true,
+  "os": "linux",
+  "arch": "amd64",
+  "cpus": 8
+}
