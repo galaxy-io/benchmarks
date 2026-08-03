@@ -21,7 +21,7 @@ Vendor-matched runs use the same module with the vendor's published instance typ
 The security group opens port 22 to `ssh_cidr` and nothing else; ports Docker maps
 during runs are unreachable from outside.
 
-## Exapmle run
+## Example run
 
 ```sh
 # Provision the machine and connect (-A forwards your agent for the clone)
@@ -37,8 +37,10 @@ cloud-init status --wait
 git clone git@github.com:galaxy-io/benchmarks.git
 cd benchmarks/data-movement
 
-go run ./cmd/bench run -sut filament -reps 5 -sf 1
-go run ./cmd/bench run -sut {sut} -reps 5 -sf 1
+# -timeout covers the whole invocation, not one rep; the 1h default
+# kills slow SUTs mid-sweep at sf 1.
+go run ./cmd/bench run -sut filament -reps 5 -sf 1 -timeout 6h
+go run ./cmd/bench run -sut all -route all -reps 5 -sf 1 -timeout 24h
 ```
 
 ```sh

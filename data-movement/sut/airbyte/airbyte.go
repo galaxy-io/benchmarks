@@ -30,6 +30,10 @@ const (
 	DestPGImage      = "airbyte/destination-postgres:3.0.13"
 	SourceMySQLImage = "airbyte/source-mysql:3.53.1"
 	DestMySQLImage   = "airbyte/destination-mysql:1.1.1"
+
+	// ConnectorMemoryLimit caps each connector container, as the platform's
+	// pod resource defaults do; the JVM sizes its heap from the cgroup.
+	ConnectorMemoryLimit = "4g"
 )
 
 // sourceImage picks the source connector image for an engine.
@@ -85,6 +89,7 @@ func (a *Airbyte) Config() map[string]any {
 		"syncMode":          "full_refresh/overwrite",
 		"replicationMethod": "Standard",
 		"typeDedupe":        true,
+		"connectorMemory":   ConnectorMemoryLimit,
 	}
 }
 
@@ -144,11 +149,14 @@ func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) 
 		return fmt.Errorf("copy catalog: %w", err)
 	}
 
-	// The connectors carry the run label so the sampler picks them up.
+	// The connectors carry the run label so the sampler picks them up. Each
+	// gets the memory limit the platform's own pod defaults impose; without
+	// one, every connector JVM sizes its heap from the host and two of them
+	// thrash the machine at scale.
 	connector := func(image, role, verb, cfg string) string {
 		return fmt.Sprintf(
-			"docker run --rm -i --network %s -v %s:/secrets -l %s=%s -l %s=%s %s %s --config /secrets/%s.json --catalog /secrets/catalog.json",
-			env.Net.Name, a.volume, harness.LabelRun, env.RunID, harness.LabelRole, role, image, verb, cfg)
+			"docker run --rm -i --network %s -m %s -v %s:/secrets -l %s=%s -l %s=%s %s %s --config /secrets/%s.json --catalog /secrets/catalog.json",
+			env.Net.Name, ConnectorMemoryLimit, a.volume, harness.LabelRun, env.RunID, harness.LabelRole, role, image, verb, cfg)
 	}
 	// The platform's worker forwards only RECORD and STATE to the
 	// destination; it rejects LOG and TRACE, so the pipe filters the same way.

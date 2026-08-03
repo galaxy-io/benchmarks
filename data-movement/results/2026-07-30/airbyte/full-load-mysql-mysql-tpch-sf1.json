@@ -1,0 +1,516 @@
+{
+  "sut": "airbyte",
+  "scenario": "full-load",
+  "route": "mysql-mysql",
+  "dataset": "tpch-sf1",
+  "rows": 8661245,
+  "image": "airbyte/source-mysql:3.53.1 | airbyte/destination-mysql:1.1.1",
+  "native": true,
+  "config": {
+    "connectorMemory": "4g",
+    "replicationMethod": "Standard",
+    "syncMode": "full_refresh/overwrite",
+    "typeDedupe": true
+  },
+  "startedAt": "2026-07-30T22:43:20.607402943Z",
+  "reps": [
+    {
+      "setupSeconds": 4.449381881,
+      "wallSeconds": 1367.523845152,
+      "rowsPerSec": 6333.523931377815,
+      "resources": [
+        {
+          "role": "airbyte",
+          "cpuSeconds": 44.508442,
+          "peakMemBytes": 16732160,
+          "netRxBytes": 1076,
+          "netTxBytes": 126,
+          "samples": 2737
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 718.923253,
+          "peakMemBytes": 24947200000,
+          "netRxBytes": 3913706172,
+          "netTxBytes": 5145714,
+          "samples": 2737
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 14.201023,
+          "peakMemBytes": 5470396416,
+          "netRxBytes": 1121417205,
+          "netTxBytes": 1026767241,
+          "samples": 2737
+        },
+        {
+          "role": "airbyte-source",
+          "cpuSeconds": 100.313968,
+          "peakMemBytes": 1271820288,
+          "netRxBytes": 1017633168,
+          "netTxBytes": 2563469,
+          "samples": 1104
+        },
+        {
+          "role": "airbyte-destination",
+          "cpuSeconds": 369.886307,
+          "peakMemBytes": 3190349824,
+          "netRxBytes": 5146298,
+          "netTxBytes": 3913704209,
+          "samples": 2734
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 4.7035167730000005,
+      "wallSeconds": 1365.163533521,
+      "rowsPerSec": 6344.4743338998405,
+      "resources": [
+        {
+          "role": "source",
+          "cpuSeconds": 14.690486,
+          "peakMemBytes": 5465788416,
+          "netRxBytes": 1121468479,
+          "netTxBytes": 1026843167,
+          "samples": 2730
+        },
+        {
+          "role": "airbyte-source",
+          "cpuSeconds": 104.524956,
+          "peakMemBytes": 1294639104,
+          "netRxBytes": 1020780032,
+          "netTxBytes": 2577349,
+          "samples": 1103
+        },
+        {
+          "role": "airbyte-destination",
+          "cpuSeconds": 385.766053,
+          "peakMemBytes": 3208327168,
+          "netRxBytes": 5602113,
+          "netTxBytes": 3913417889,
+          "samples": 2728
+        },
+        {
+          "role": "airbyte",
+          "cpuSeconds": 45.359202,
+          "peakMemBytes": 16252928,
+          "netRxBytes": 1076,
+          "netTxBytes": 126,
+          "samples": 2730
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 740.567737,
+          "peakMemBytes": 22817546240,
+          "netRxBytes": 3913419661,
+          "netTxBytes": 5601265,
+          "samples": 2730
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 4.63245619,
+      "wallSeconds": 1371.211675494,
+      "rowsPerSec": 6316.49011949935,
+      "resources": [
+        {
+          "role": "airbyte-source",
+          "cpuSeconds": 105.515295,
+          "peakMemBytes": 1275080704,
+          "netRxBytes": 1017142075,
+          "netTxBytes": 2588435,
+          "samples": 1106
+        },
+        {
+          "role": "airbyte-destination",
+          "cpuSeconds": 378.345466,
+          "peakMemBytes": 3232120832,
+          "netRxBytes": 4264240,
+          "netTxBytes": 3913788717,
+          "samples": 2738
+        },
+        {
+          "role": "airbyte",
+          "cpuSeconds": 45.555838,
+          "peakMemBytes": 17080320,
+          "netRxBytes": 1076,
+          "netTxBytes": 126,
+          "samples": 2740
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 739.931933,
+          "peakMemBytes": 23457710080,
+          "netRxBytes": 3913790722,
+          "netTxBytes": 4263656,
+          "samples": 2740
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 14.859543,
+          "peakMemBytes": 5468004352,
+          "netRxBytes": 1121498921,
+          "netTxBytes": 1026679476,
+          "samples": 2740
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 4.076580524,
+      "wallSeconds": 1362.801891542,
+      "rowsPerSec": 6355.468871708027,
+      "resources": [
+        {
+          "role": "source",
+          "cpuSeconds": 14.109068,
+          "peakMemBytes": 5478760448,
+          "netRxBytes": 1121230693,
+          "netTxBytes": 1026368826,
+          "samples": 2723
+        },
+        {
+          "role": "airbyte-source",
+          "cpuSeconds": 103.829501,
+          "peakMemBytes": 1272147968,
+          "netRxBytes": 1022658251,
+          "netTxBytes": 2672541,
+          "samples": 1081
+        },
+        {
+          "role": "airbyte-destination",
+          "cpuSeconds": 388.331296,
+          "peakMemBytes": 3312701440,
+          "netRxBytes": 4205248,
+          "netTxBytes": 3913478191,
+          "samples": 2720
+        },
+        {
+          "role": "airbyte",
+          "cpuSeconds": 45.171512,
+          "peakMemBytes": 16572416,
+          "netRxBytes": 1076,
+          "netTxBytes": 126,
+          "samples": 2723
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 715.619098,
+          "peakMemBytes": 23744876544,
+          "netRxBytes": 3913480196,
+          "netTxBytes": 4204664,
+          "samples": 2723
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    },
+    {
+      "setupSeconds": 4.471824219,
+      "wallSeconds": 1360.558279725,
+      "rowsPerSec": 6365.949279108159,
+      "resources": [
+        {
+          "role": "airbyte",
+          "cpuSeconds": 45.587268,
+          "peakMemBytes": 16400384,
+          "netRxBytes": 1076,
+          "netTxBytes": 126,
+          "samples": 2718
+        },
+        {
+          "role": "sink",
+          "cpuSeconds": 727.957584,
+          "peakMemBytes": 25843384320,
+          "netRxBytes": 3914061423,
+          "netTxBytes": 5802031,
+          "samples": 2718
+        },
+        {
+          "role": "source",
+          "cpuSeconds": 14.227791,
+          "peakMemBytes": 5469900800,
+          "netRxBytes": 1121506823,
+          "netTxBytes": 1026898271,
+          "samples": 2718
+        },
+        {
+          "role": "airbyte-source",
+          "cpuSeconds": 107.880243,
+          "peakMemBytes": 1296752640,
+          "netRxBytes": 1023277869,
+          "netTxBytes": 2630144,
+          "samples": 1103
+        },
+        {
+          "role": "airbyte-destination",
+          "cpuSeconds": 395.683827,
+          "peakMemBytes": 3254018048,
+          "netRxBytes": 5802615,
+          "netTxBytes": 3914059484,
+          "samples": 2715
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "match": true
+        }
+      ],
+      "parityPass": true
+    }
+  ],
+  "medianWallSeconds": 1365.163533521,
+  "minWallSeconds": 1360.558279725,
+  "maxWallSeconds": 1371.211675494,
+  "medianRowsPerSec": 6344.4743338998405,
+  "parityPass": true,
+  "os": "linux",
+  "arch": "amd64",
+  "cpus": 8
+}

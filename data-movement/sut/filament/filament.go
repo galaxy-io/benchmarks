@@ -172,6 +172,19 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 		return "", fmt.Errorf("create pipeline: %w", err)
 	}
 
+	// The sink's destination field is named per connector: postgres takes a
+	// schema, mysql takes a database. An unknown key is silently dropped and
+	// filament falls back to deriving the destination from the source name.
+	var sinkKey string
+	switch env.Sink.Engine {
+	case harness.Postgres:
+		sinkKey = "schema"
+	case harness.MySQL:
+		sinkKey = "database"
+	default:
+		return "", fmt.Errorf("no sink config key for engine %v", env.Sink.Engine)
+	}
+
 	edges := make([]map[string]any, 0, len(tables))
 	for _, t := range tables {
 		edges = append(edges, map[string]any{
@@ -190,7 +203,7 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 		"pipelineId": created.Pipeline.ID,
 		"nodes": []map[string]any{
 			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
-			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{"schema": harness.Namespace}},
+			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{sinkKey: harness.Namespace}},
 		},
 		"edges": edges,
 	}, &version)
