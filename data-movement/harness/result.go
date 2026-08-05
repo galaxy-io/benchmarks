@@ -87,27 +87,19 @@ func median(s []float64) float64 {
 
 // CheckParity counts every table on both sides in the bench namespace.
 func CheckParity(ctx context.Context, source, sink *DB, tables []string) ([]TableParity, bool, error) {
-	src, err := source.Open()
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = src.Close() }()
-	dst, err := sink.Open()
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = dst.Close() }()
-
 	pass := true
 	out := make([]TableParity, 0, len(tables))
 	for _, t := range tables {
 		p := TableParity{Table: t}
-		q := fmt.Sprintf("SELECT count(*) FROM %s.%s", Namespace, t)
-		if err := src.QueryRowContext(ctx, q).Scan(&p.Source); err != nil {
+		n, err := source.Engine.Count(ctx, source, t)
+		if err != nil {
 			return nil, false, fmt.Errorf("count source %s: %w", t, err)
 		}
-		if err := dst.QueryRowContext(ctx, q).Scan(&p.Sink); err != nil {
+		p.Source = n
+		if n, err = sink.Engine.Count(ctx, sink, t); err != nil {
 			p.Sink = -1
+		} else {
+			p.Sink = n
 		}
 		p.Match = p.Source == p.Sink
 		pass = pass && p.Match

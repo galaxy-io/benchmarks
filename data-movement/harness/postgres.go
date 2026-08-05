@@ -69,6 +69,11 @@ func (postgresEngine) Open(db *DB) (*sql.DB, error) {
 	return sql.Open("pgx", db.DSN)
 }
 
+// Count counts one bench table.
+func (postgresEngine) Count(ctx context.Context, db *DB, table string) (int64, error) {
+	return sqlCount(ctx, db, table)
+}
+
 // Load creates t in the bench schema and COPYs its csv in.
 func (postgresEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error) {
 	conn, err := pgx.Connect(ctx, db.DSN)

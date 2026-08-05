@@ -13,9 +13,11 @@ import (
 // DB is one provisioned database, addressable from the host and from the network.
 type DB struct {
 	Container   tc.Container
+	Aux         []tc.Container // supporting containers the engine started, torn down with the main one
 	Engine      Engine
-	DSN         string // reachable from the host
-	InternalDSN string // reachable from other containers on the network
+	DSN         string            // reachable from the host
+	InternalDSN string            // reachable from other containers on the network
+	Props       map[string]string // engine-specific addressing beyond the DSNs, network-internal
 }
 
 // Open opens a database/sql handle to the database from the host.
@@ -65,11 +67,14 @@ func hostPort(ctx context.Context, c tc.Container, port string) (string, string,
 
 // Terminate tears down everything the env started.
 func (e *Env) Terminate(ctx context.Context) {
-	if e.Source != nil {
-		_ = e.Source.Container.Terminate(ctx)
-	}
-	if e.Sink != nil {
-		_ = e.Sink.Container.Terminate(ctx)
+	for _, db := range []*DB{e.Source, e.Sink} {
+		if db == nil {
+			continue
+		}
+		_ = db.Container.Terminate(ctx)
+		for _, c := range db.Aux {
+			_ = c.Terminate(ctx)
+		}
 	}
 	if e.Net != nil {
 		_ = e.Net.Remove(ctx)

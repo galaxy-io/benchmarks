@@ -20,26 +20,44 @@ type TableDef struct {
 	CSV  string
 }
 
-// Engine is one database engine: how to start it, address it, and bulk load into it.
+// Engine is one database engine: how to start it, address it, bulk load into
+// it, and count delivered rows for parity.
 type Engine interface {
 	Name() string
 	Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error)
 	Open(db *DB) (*sql.DB, error)
 	Load(ctx context.Context, db *DB, t TableDef) (int64, error)
+	Count(ctx context.Context, db *DB, table string) (int64, error)
 }
 
-// The two engines a route can name.
+// The engines a route can name; iceberg is sink-only.
 var (
 	Postgres Engine = postgresEngine{}
 	MySQL    Engine = mysqlEngine{}
+	Iceberg  Engine = icebergEngine{}
 )
 
 // ParseRoute resolves a route like "pg-mysql" into its source and sink engines.
 func ParseRoute(route string) (source, sink Engine, err error) {
-	engines := map[string]Engine{"pg": Postgres, "mysql": MySQL}
+	engines := map[string]Engine{"pg": Postgres, "mysql": MySQL, "iceberg": Iceberg}
 	parts := strings.Split(route, "-")
 	if len(parts) != 2 || engines[parts[0]] == nil || engines[parts[1]] == nil {
-		return nil, nil, fmt.Errorf("route %q is not <engine>-<engine> over pg, mysql", route)
+		return nil, nil, fmt.Errorf("route %q is not <engine>-<engine> over pg, mysql, iceberg", route)
+	}
+	if engines[parts[0]] == Iceberg {
+		return nil, nil, fmt.Errorf("route %q: iceberg is sink-only", route)
 	}
 	return engines[parts[0]], engines[parts[1]], nil
+}
+
+// sqlCount counts one bench table through an engine's database/sql handle.
+func sqlCount(ctx context.Context, db *DB, table string) (int64, error) {
+	h, err := db.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = h.Close() }()
+	var n int64
+	err = h.QueryRowContext(ctx, fmt.Sprintf("SELECT count(*) FROM %s.%s", Namespace, table)).Scan(&n)
+	return n, err
 }
