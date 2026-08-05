@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -85,6 +86,12 @@ func (e icebergEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, 
 	if err != nil {
 		return nil, err
 	}
+	// Pre-create the bench namespace, mirroring how the sql engines pre-create
+	// their bench database; the fixture's sqlite backend also races on
+	// concurrent namespace creation from parallel writers.
+	if err := createNamespace(ctx, fmt.Sprintf("http://%s:%s", host, port)); err != nil {
+		return nil, err
+	}
 	return &DB{
 		Container:   catalog,
 		Aux:         []tc.Container{minio},
@@ -99,6 +106,26 @@ func (e icebergEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, 
 			"s3.region":            "us-east-1",
 		},
 	}, nil
+}
+
+// createNamespace creates the bench namespace on the REST catalog.
+func createNamespace(ctx context.Context, catalogURL string) error {
+	body := fmt.Sprintf(`{"namespace":[%q],"properties":{}}`, Namespace)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		catalogURL+"/v1/namespaces", strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("create iceberg namespace: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("create iceberg namespace: %s", resp.Status)
+	}
+	return nil
 }
 
 // Open fails: iceberg has no database/sql handle; parity goes through Count.
