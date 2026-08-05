@@ -19,7 +19,7 @@ import (
 
 var (
 	scenarios = []string{"full-load"}
-	routes    = []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"}
+	routes    = []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg", "pg-iceberg", "mysql-iceberg"}
 )
 
 func main() {

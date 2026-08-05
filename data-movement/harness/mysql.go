@@ -72,6 +72,11 @@ func (mysqlEngine) Open(db *DB) (*sql.DB, error) {
 	return sql.Open("mysql", dsn)
 }
 
+// Count counts one bench table.
+func (mysqlEngine) Count(ctx context.Context, db *DB, table string) (int64, error) {
+	return sqlCount(ctx, db, table)
+}
+
 // Load creates t in the bench database and loads its csv with
 // LOAD DATA LOCAL INFILE, the fastest client-side path mysql offers.
 func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error) {

@@ -45,8 +45,10 @@ func (f *Filament) Image() string { return Image }
 // Config reports the run options.
 func (f *Filament) Config() map[string]any { return Options }
 
-// Routes lists every route; filament ships both connectors.
-func (f *Filament) Routes() []string { return []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg"} }
+// Routes lists every route; filament ships all three connectors.
+func (f *Filament) Routes() []string {
+	return []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg", "pg-iceberg", "mysql-iceberg"}
+}
 
 // Setup starts the container on the env's network and registers a pipeline
 // with one snapshot-replace edge per table.
@@ -55,17 +57,19 @@ func (f *Filament) Setup(ctx context.Context, env *harness.Env, tables []string)
 	if err != nil {
 		return err
 	}
-	sinkDSN, err := connectorDSN(env.Sink)
-	if err != nil {
-		return err
+	containerEnv := map[string]string{"SOURCE_DSN": srcDSN}
+	// The iceberg sink is configured structurally on its connection, not by DSN.
+	if env.Sink.Engine != harness.Iceberg {
+		sinkDSN, err := connectorDSN(env.Sink)
+		if err != nil {
+			return err
+		}
+		containerEnv["SINK_DSN"] = sinkDSN
 	}
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
-			Image: Image,
-			Env: map[string]string{
-				"SOURCE_DSN": srcDSN,
-				"SINK_DSN":   sinkDSN,
-			},
+			Image:        Image,
+			Env:          containerEnv,
 			ExposedPorts: []string{"8080/tcp"},
 			Labels:       map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "filament"},
 			Networks:     []string{env.Net.Name},
@@ -150,11 +154,19 @@ func (f *Filament) Run(ctx context.Context) error {
 
 // createPipeline registers both connections and the pipeline, returning its id.
 func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables []string) (string, error) {
-	srcID, err := f.createConnection(ctx, "CONNECTOR_KIND_SOURCE", "bench-source", "source/dsn", env.Source.Engine.Name())
+	srcID, err := f.createConnection(ctx, "CONNECTOR_KIND_SOURCE", "bench-source", env.Source.Engine.Name(),
+		nil, map[string]string{"dsn": "source/dsn"})
 	if err != nil {
 		return "", err
 	}
-	dstID, err := f.createConnection(ctx, "CONNECTOR_KIND_SINK", "bench-sink", "sink/dsn", env.Sink.Engine.Name())
+	var dstID string
+	if env.Sink.Engine == harness.Iceberg {
+		dstID, err = f.createConnection(ctx, "CONNECTOR_KIND_SINK", "bench-sink", env.Sink.Engine.Name(),
+			icebergConnectionConfig(env.Sink), nil)
+	} else {
+		dstID, err = f.createConnection(ctx, "CONNECTOR_KIND_SINK", "bench-sink", env.Sink.Engine.Name(),
+			nil, map[string]string{"dsn": "sink/dsn"})
+	}
 	if err != nil {
 		return "", err
 	}
@@ -181,6 +193,8 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 		sinkKey = "schema"
 	case harness.MySQL:
 		sinkKey = "database"
+	case harness.Iceberg:
+		sinkKey = "namespace"
 	default:
 		return "", fmt.Errorf("no sink config key for engine %v", env.Sink.Engine)
 	}
@@ -225,20 +239,47 @@ func connectorDSN(db *harness.DB) (string, error) {
 	return "", fmt.Errorf("no connector dsn for engine %v", db.Engine)
 }
 
-// createConnection registers a connection whose dsn resolves from ref in the container env.
-func (f *Filament) createConnection(ctx context.Context, kind, name, ref, connector string) (string, error) {
+// icebergConnectionConfig renders the sink env as the iceberg connector's
+// connection-scoped config: a REST catalog plus the S3 properties iceberg-go
+// needs to reach MinIO.
+func icebergConnectionConfig(db *harness.DB) map[string]any {
+	return map[string]any{
+		"catalog": map[string]any{
+			"provider":  "rest",
+			"uri":       db.InternalDSN,
+			"warehouse": db.Props["warehouse"],
+			"properties": map[string]any{
+				"s3.endpoint":                 db.Props["s3.endpoint"],
+				"s3.access-key-id":            db.Props["s3.access-key-id"],
+				"s3.secret-access-key":        db.Props["s3.secret-access-key"],
+				"s3.region":                   db.Props["s3.region"],
+				"s3.force-virtual-addressing": "false",
+			},
+		},
+	}
+}
+
+// createConnection registers a connection configured inline or by secret refs
+// resolved from the container env.
+func (f *Filament) createConnection(ctx context.Context, kind, name, connector string, config map[string]any, secretRefs map[string]string) (string, error) {
 	var resp struct {
 		Connection struct {
 			ID string `json:"id"`
 		} `json:"connection"`
 	}
-	err := f.call(ctx, "CreateConnection", map[string]any{
-		"tenantId":   "t1",
-		"kind":       kind,
-		"name":       name,
-		"connector":  connector,
-		"secretRefs": map[string]string{"dsn": ref},
-	}, &resp)
+	req := map[string]any{
+		"tenantId":  "t1",
+		"kind":      kind,
+		"name":      name,
+		"connector": connector,
+	}
+	if config != nil {
+		req["config"] = config
+	}
+	if secretRefs != nil {
+		req["secretRefs"] = secretRefs
+	}
+	err := f.call(ctx, "CreateConnection", req, &resp)
 	if err != nil {
 		return "", fmt.Errorf("create connection %s: %w", name, err)
 	}
