@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -97,6 +98,7 @@ func CheckParity(ctx context.Context, source, sink *DB, tables []string) ([]Tabl
 		}
 		p.Source = n
 		if n, err = sink.Engine.Count(ctx, sink, t); err != nil {
+			log.Printf("sink count %s: %v", t, err)
 			p.Sink = -1
 		} else {
 			p.Sink = n
