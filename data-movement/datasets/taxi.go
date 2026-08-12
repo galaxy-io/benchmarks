@@ -1,0 +1,230 @@
+package datasets
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/galaxy-io/benchmarks/data-movement/harness"
+)
+
+// The nyc-taxi dataset is the complete NYC TLC trip record history: a trips
+// table holding all yellow-taxi records and an fhv_trips table holding all
+// for-hire records (the fhv files plus the high-volume fhvhv files), about 4B
+// rows in full. TLC's parquet exists in schema eras, so each table unions
+// era-specific projections onto one layout. Months count back from taxiEnd;
+// each era clips to its own file range.
+var taxiEnd = month{2024, 12}
+
+// taxiMaxMonths spans January 2009 through taxiEnd, the full history.
+const taxiMaxMonths = 192
+
+// taxiDDL is the yellow-taxi trips table, valid on both engines. The id column
+// is synthetic: TLC data has no primary key and every SUT wants one. Rows from
+// the lat/lon era (2009-2016) carry zero location ids.
+const taxiDDL = `(id BIGINT PRIMARY KEY, vendor_id INT, pickup_at TIMESTAMP, dropoff_at TIMESTAMP,
+ passenger_count INT, trip_distance NUMERIC(15,2), ratecode_id INT, store_and_fwd_flag TEXT,
+ pu_location_id INT, do_location_id INT, payment_type INT, fare_amount NUMERIC(15,2),
+ extra NUMERIC(15,2), mta_tax NUMERIC(15,2), tip_amount NUMERIC(15,2), tolls_amount NUMERIC(15,2),
+ improvement_surcharge NUMERIC(15,2), total_amount NUMERIC(15,2), congestion_surcharge NUMERIC(15,2),
+ airport_fee NUMERIC(15,2))`
+
+// fhvDDL is the for-hire fhv_trips table, valid on both engines; fhv and fhvhv
+// rows project onto this one layout.
+const fhvDDL = `(id BIGINT PRIMARY KEY, dispatching_base_num TEXT, pickup_at TIMESTAMP,
+ dropoff_at TIMESTAMP, pu_location_id INT, do_location_id INT, sr_flag INT,
+ affiliated_base_number TEXT)`
+
+// Era projections. Each selects the DDL columns after id; numerics coalesce so
+// both engines load the same values (mysql turns empty csv fields into zeros),
+// and legacy text codes map onto the modern numeric ones.
+const (
+	// yellow 2009: vendor_name/Trip_Pickup_DateTime layout, lat/lon, text codes.
+	yellow2009Select = `SELECT
+ CASE upper(vendor_name) WHEN 'CMT' THEN 1 WHEN 'VTS' THEN 2 WHEN 'DDS' THEN 3 ELSE 0 END,
+ CAST(Trip_Pickup_DateTime AS TIMESTAMP), CAST(Trip_Dropoff_DateTime AS TIMESTAMP),
+ COALESCE(Passenger_Count, 0), COALESCE(Trip_Distance, 0), COALESCE(TRY_CAST(Rate_Code AS INTEGER), 0),
+ COALESCE(CAST(store_and_forward AS VARCHAR), ''), 0, 0,
+ CASE WHEN upper(CAST(Payment_Type AS VARCHAR)) LIKE 'CRE%' THEN 1 WHEN upper(CAST(Payment_Type AS VARCHAR)) LIKE 'CAS%' THEN 2 ELSE 0 END,
+ COALESCE(Fare_Amt, 0), COALESCE(surcharge, 0), COALESCE(mta_tax, 0), COALESCE(Tip_Amt, 0),
+ COALESCE(Tolls_Amt, 0), 0, COALESCE(Total_Amt, 0), 0, 0`
+
+	// yellow 2010: lowercase names, varchar timestamps and codes, lat/lon.
+	yellow2010Select = `SELECT
+ CASE upper(vendor_id) WHEN 'CMT' THEN 1 WHEN 'VTS' THEN 2 WHEN 'DDS' THEN 3 ELSE 0 END,
+ CAST(pickup_datetime AS TIMESTAMP), CAST(dropoff_datetime AS TIMESTAMP),
+ COALESCE(passenger_count, 0), COALESCE(trip_distance, 0), COALESCE(TRY_CAST(rate_code AS INTEGER), 0),
+ COALESCE(store_and_fwd_flag, ''), 0, 0,
+ CASE WHEN upper(payment_type) LIKE 'CRE%' THEN 1 WHEN upper(payment_type) LIKE 'CAS%' THEN 2 ELSE 0 END,
+ COALESCE(fare_amount, 0), COALESCE(surcharge, 0), COALESCE(mta_tax, 0), COALESCE(tip_amount, 0),
+ COALESCE(tolls_amount, 0), 0, COALESCE(total_amount, 0), 0, 0`
+
+	// yellow 2011 onward: the harmonized modern layout.
+	yellowModernSelect = `SELECT
+ COALESCE(VendorID, 0), tpep_pickup_datetime, tpep_dropoff_datetime,
+ COALESCE(passenger_count, 0), COALESCE(trip_distance, 0), COALESCE(RatecodeID, 0),
+ COALESCE(store_and_fwd_flag, ''), COALESCE(PULocationID, 0), COALESCE(DOLocationID, 0),
+ COALESCE(payment_type, 0), COALESCE(fare_amount, 0), COALESCE(extra, 0), COALESCE(mta_tax, 0),
+ COALESCE(tip_amount, 0), COALESCE(tolls_amount, 0), COALESCE(improvement_surcharge, 0),
+ COALESCE(total_amount, 0), COALESCE(congestion_surcharge, 0), COALESCE(Airport_fee, 0)`
+
+	// fhv 2015 onward: one layout for all ten years, integer widths vary.
+	fhvSelect = `SELECT
+ COALESCE(dispatching_base_num, ''), pickup_datetime, COALESCE(dropOff_datetime, pickup_datetime),
+ COALESCE(TRY_CAST(PUlocationID AS INTEGER), 0), COALESCE(TRY_CAST(DOlocationID AS INTEGER), 0),
+ COALESCE(TRY_CAST(SR_Flag AS INTEGER), 0), COALESCE(Affiliated_base_number, '')`
+
+	// fhvhv 2019 onward, projected onto the fhv layout: the originating base
+	// stands in for the affiliated base, shared_request_flag for sr_flag.
+	fhvhvSelect = `SELECT
+ COALESCE(dispatching_base_num, ''), pickup_datetime, dropoff_datetime,
+ COALESCE(PULocationID, 0), COALESCE(DOLocationID, 0),
+ CASE WHEN shared_request_flag = 'Y' THEN 1 ELSE 0 END, COALESCE(originating_base_num, '')`
+)
+
+// month is one TLC file month.
+type month struct{ y, m int }
+
+// idx orders months on a single axis for range arithmetic.
+func (m month) idx() int { return m.y*12 + m.m - 1 }
+
+// next is the month after m.
+func (m month) next() month {
+	if m.m == 12 {
+		return month{m.y + 1, 1}
+	}
+	return month{m.y, m.m + 1}
+}
+
+// monthAt is the month with the given idx.
+func monthAt(i int) month { return month{i / 12, i%12 + 1} }
+
+// part is one schema era of a table: a file prefix, its month range, and the
+// projection plus timestamp expressions the era needs.
+type part struct {
+	prefix, sel, pickup, dropoff string
+	start, end                   month
+}
+
+// tripsParts lists the yellow-taxi eras.
+var tripsParts = []part{
+	{"yellow_tripdata", yellow2009Select, "CAST(Trip_Pickup_DateTime AS TIMESTAMP)", "CAST(Trip_Dropoff_DateTime AS TIMESTAMP)", month{2009, 1}, month{2009, 12}},
+	{"yellow_tripdata", yellow2010Select, "CAST(pickup_datetime AS TIMESTAMP)", "CAST(dropoff_datetime AS TIMESTAMP)", month{2010, 1}, month{2010, 12}},
+	{"yellow_tripdata", yellowModernSelect, "tpep_pickup_datetime", "tpep_dropoff_datetime", month{2011, 1}, taxiEnd},
+}
+
+// fhvParts lists the for-hire filesets.
+var fhvParts = []part{
+	{"fhv_tripdata", fhvSelect, "pickup_datetime", "COALESCE(dropOff_datetime, pickup_datetime)", month{2015, 1}, taxiEnd},
+	{"fhvhv_tripdata", fhvhvSelect, "pickup_datetime", "dropoff_datetime", month{2019, 2}, taxiEnd},
+}
+
+// SeedTaxi loads the last months of the nyc-taxi dataset into db's bench
+// namespace; taxiMaxMonths covers the full ~4B-row history. Requires duckdb on
+// PATH and network for uncached months.
+func SeedTaxi(ctx context.Context, db *harness.DB, months int) ([]Table, error) {
+	if months < 1 || months > taxiMaxMonths {
+		return nil, fmt.Errorf("taxi months must be 1..%d, got %d", taxiMaxMonths, months)
+	}
+	begin := monthAt(taxiEnd.idx() - (months - 1))
+
+	tables := make([]Table, 0, 2)
+	for _, t := range []struct {
+		name, ddl string
+		parts     []part
+	}{
+		{"trips", taxiDDL, tripsParts},
+		{"fhv_trips", fhvDDL, fhvParts},
+	} {
+		tbl, err := seedTaxiTable(ctx, db, t.name, t.ddl, t.parts, begin)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, tbl)
+	}
+	return tables, nil
+}
+
+// seedTaxiTable downloads each era's months inside the window, exports their
+// union as one csv, and loads it.
+func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts []part, begin month) (Table, error) {
+	var selects []string
+	for _, p := range parts {
+		lo, hi := p.start, p.end
+		if begin.idx() > lo.idx() {
+			lo = begin
+		}
+		if lo.idx() > hi.idx() {
+			continue
+		}
+		files, err := taxiParquet(ctx, p.prefix, lo, hi)
+		if err != nil {
+			return Table{}, err
+		}
+		// TLC files carry a few stray rows dated outside their month; the
+		// range filter keeps counts deterministic and every timestamp inside
+		// mysql's TIMESTAMP range.
+		upper := hi.next()
+		selects = append(selects, fmt.Sprintf(
+			"%s FROM read_parquet(['%s']) WHERE %s >= '%d-%02d-01' AND %s < '%d-%02d-01' AND %s < '%d-%02d-01'",
+			p.sel, strings.Join(files, "','"),
+			p.pickup, lo.y, lo.m, p.pickup, upper.y, upper.m, p.dropoff, upper.next().y, upper.next().m))
+	}
+	if len(selects) == 0 {
+		return Table{}, fmt.Errorf("%s: no files in window", table)
+	}
+
+	dir, err := os.MkdirTemp("", "taxi")
+	if err != nil {
+		return Table{}, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	csv := filepath.Join(dir, table+".csv")
+	script := fmt.Sprintf(
+		"COPY (SELECT row_number() OVER () AS id, * FROM (%s)) TO '%s' (FORMAT csv, HEADER false);",
+		strings.Join(selects, "\nUNION ALL\n"), csv)
+	if out, err := exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput(); err != nil {
+		return Table{}, fmt.Errorf("duckdb %s export: %w:\n%s", table, err, out)
+	}
+
+	rows, err := db.Engine.Load(ctx, db, harness.TableDef{Name: table, DDL: ddl, CSV: csv})
+	if err != nil {
+		return Table{}, err
+	}
+	return Table{Name: table, Rows: rows}, nil
+}
+
+// taxiParquet returns the cached parquet path per month from lo through hi,
+// downloading any that are missing into the user cache so reps and reruns
+// skip the network.
+func taxiParquet(ctx context.Context, prefix string, lo, hi month) ([]string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	cache := filepath.Join(base, "galaxy-benchmarks", "taxi")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		return nil, err
+	}
+
+	var files []string
+	for m := lo; m.idx() <= hi.idx(); m = m.next() {
+		name := fmt.Sprintf("%s_%d-%02d.parquet", prefix, m.y, m.m)
+		path := filepath.Join(cache, name)
+		if _, err := os.Stat(path); err != nil {
+			url := "https://d37ci6vzurychx.cloudfront.net/trip-data/" + name
+			script := fmt.Sprintf(
+				"INSTALL httpfs; LOAD httpfs; COPY (FROM read_parquet('%s')) TO '%s' (FORMAT parquet);",
+				url, path)
+			if out, err := exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput(); err != nil {
+				return nil, fmt.Errorf("download %s: %w:\n%s", name, err, out)
+			}
+		}
+		files = append(files, path)
+	}
+	return files, nil
+}

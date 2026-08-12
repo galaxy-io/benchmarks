@@ -20,7 +20,37 @@ import (
 var (
 	scenarios = []string{"full-load"}
 	routes    = []string{"pg-pg", "pg-mysql", "mysql-mysql", "mysql-pg", "pg-iceberg", "mysql-iceberg"}
+	datanames = []string{"tpch", "taxi"}
 )
+
+// seed names a dataset and its size: sf sizes tpch, months sizes taxi.
+type seed struct {
+	name   string
+	sf     float64
+	months int
+}
+
+// label renders the dataset label recorded in results.
+func (s seed) label() string {
+	switch s.name {
+	case "tpch":
+		return fmt.Sprintf("tpch-sf%v", s.sf)
+	case "taxi":
+		return fmt.Sprintf("taxi-%dmo", s.months)
+	}
+	return "unknown-" + s.name
+}
+
+// seed loads the dataset into db and reports its tables.
+func (s seed) seed(ctx context.Context, db *harness.DB) ([]datasets.Table, error) {
+	switch s.name {
+	case "tpch":
+		return datasets.SeedTPCH(ctx, db, s.sf)
+	case "taxi":
+		return datasets.SeedTaxi(ctx, db, s.months)
+	}
+	return nil, fmt.Errorf("unknown dataset %q", s.name)
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -54,7 +84,9 @@ func run(args []string) error {
 	scenario := fs.String("scenario", scenarios[0], "scenario to run")
 	route := fs.String("route", routes[0], "source-to-destination route, or all")
 	sutName := fs.String("sut", sut.Names[0], "system under test, or all")
-	sf := fs.Float64("sf", 0.01, "TPC-H scale factor")
+	dataset := fs.String("dataset", datanames[0], "dataset to seed")
+	sf := fs.Float64("sf", 0.01, "TPC-H scale factor (tpch dataset)")
+	months := fs.Int("months", 1, "months of history back from 2024-12 to seed, 192 = all (taxi dataset)")
 	reps := fs.Int("reps", 1, "repetitions, each with fresh containers and seed")
 	out := fs.String("out", "results", "directory for result JSON")
 	timeout := fs.Duration("timeout", time.Hour, "overall timeout")
@@ -68,6 +100,7 @@ func run(args []string) error {
 		{"scenario", *scenario, scenarios},
 		{"route", *route, append([]string{"all"}, routes...)},
 		{"sut", *sutName, append([]string{"all"}, sut.Names...)},
+		{"dataset", *dataset, datanames},
 	} {
 		if !slices.Contains(c.known, c.val) {
 			return fmt.Errorf("unknown %s %q (known: %s)", c.name, c.val, strings.Join(c.known, ", "))
@@ -99,7 +132,8 @@ func run(args []string) error {
 				log.Printf("skip %s %s: route not supported", sn, rt)
 				continue
 			}
-			if err := runCombo(ctx, *scenario, rt, sn, *sf, *reps, *out); err != nil {
+			sd := seed{name: *dataset, sf: *sf, months: *months}
+			if err := runCombo(ctx, *scenario, rt, sn, sd, *reps, *out); err != nil {
 				if !sweep {
 					return err
 				}
@@ -115,13 +149,13 @@ func run(args []string) error {
 }
 
 // runCombo benchmarks one sut on one route and writes its result JSON.
-func runCombo(ctx context.Context, scenario, route, sutName string, sf float64, reps int, out string) error {
+func runCombo(ctx context.Context, scenario, route, sutName string, sd seed, reps int, out string) error {
 	meta := sut.New(sutName, route)
 	result := &harness.Result{
 		SUT:       meta.Name(),
 		Scenario:  scenario,
 		Route:     route,
-		Dataset:   fmt.Sprintf("tpch-sf%v", sf),
+		Dataset:   sd.label(),
 		Image:     meta.Image(),
 		Native:    true,
 		Config:    meta.Config(),
@@ -131,7 +165,7 @@ func runCombo(ctx context.Context, scenario, route, sutName string, sf float64, 
 	log.Printf("run %s %s %s", sutName, scenario, route)
 	for i := range reps {
 		log.Printf("rep %d/%d", i+1, reps)
-		rep, rows, err := runOnce(ctx, sut.New(sutName, route), route, sf)
+		rep, rows, err := runOnce(ctx, sut.New(sutName, route), route, sd)
 		if err != nil {
 			return fmt.Errorf("rep %d: %w", i+1, err)
 		}
@@ -178,7 +212,7 @@ func parityWord(pass bool) string {
 }
 
 // runOnce provisions a fresh environment, seeds, runs the SUT, and checks parity.
-func runOnce(ctx context.Context, s sut.SUT, route string, sf float64) (harness.Rep, int64, error) {
+func runOnce(ctx context.Context, s sut.SUT, route string, sd seed) (harness.Rep, int64, error) {
 	var rep harness.Rep
 
 	runID := fmt.Sprintf("bench-%d", time.Now().UnixNano())
@@ -188,7 +222,7 @@ func runOnce(ctx context.Context, s sut.SUT, route string, sf float64) (harness.
 	}
 	defer env.Terminate(context.Background())
 
-	tables, err := datasets.SeedTPCH(ctx, env.Source, sf)
+	tables, err := sd.seed(ctx, env.Source)
 	if err != nil {
 		return rep, 0, fmt.Errorf("seed: %w", err)
 	}
