@@ -31,6 +31,7 @@ type seed struct {
 	name   string
 	sf     float64
 	months int
+	reuse  bool
 }
 
 // label renders the dataset label recorded in results.
@@ -46,13 +47,45 @@ func (s seed) label() string {
 
 // seed loads the dataset into db and reports its tables.
 func (s seed) seed(ctx context.Context, db *harness.DB) ([]datasets.Table, error) {
+	// A full load only reads the source, so a seed already in place serves
+	// every SUT and route in a sweep. The label has to match: a seed built
+	// with other parameters is a different dataset wearing the same tables.
+	if s.reuse {
+		if got := datasets.LoadedSeed(ctx, db); got == s.label() {
+			log.Printf("reusing %s already seeded on the source", got)
+			return datasets.CountSeeded(ctx, db, s.tableNames())
+		}
+	}
+	var tables []datasets.Table
+	var err error
 	switch s.name {
 	case "tpch":
-		return datasets.SeedTPCH(ctx, db, s.sf)
+		tables, err = datasets.SeedTPCH(ctx, db, s.sf)
 	case "taxi":
-		return datasets.SeedTaxi(ctx, db, s.months)
+		tables, err = datasets.SeedTaxi(ctx, db, s.months)
+	default:
+		return nil, fmt.Errorf("unknown dataset %q", s.name)
 	}
-	return nil, fmt.Errorf("unknown dataset %q", s.name)
+	if err != nil {
+		return nil, err
+	}
+	if s.reuse {
+		if err := datasets.MarkSeed(ctx, db, s.label()); err != nil {
+			return nil, err
+		}
+	}
+	return tables, nil
+}
+
+// tableNames lists the tables this dataset seeds.
+func (s seed) tableNames() []string {
+	switch s.name {
+	case "tpch":
+		return datasets.TPCHTableNames()
+	case "taxi":
+		return datasets.TaxiTableNames()
+	}
+	return nil
 }
 
 func main() {
@@ -88,6 +121,7 @@ func run(args []string) error {
 	route := fs.String("route", routes[0], "source-to-destination route, or all")
 	sutName := fs.String("sut", sut.Names[0], "system under test, or all")
 	dataset := fs.String("dataset", datanames[0], "dataset to seed")
+	reuseSeed := fs.Bool("reuse-seed", false, "seed the remote source once for the sweep, wiping it at the end")
 	sf := fs.Float64("sf", 0.01, "TPC-H scale factor (tpch dataset)")
 	months := fs.Int("months", 1, "months of history back from 2024-12 to seed, 192 = all (taxi dataset)")
 	reps := fs.Int("reps", 1, "repetitions, each with fresh containers and seed")
@@ -138,7 +172,7 @@ func run(args []string) error {
 		return err
 	}
 
-	sd := seed{name: *dataset, sf: *sf, months: *months}
+	sd := seed{name: *dataset, sf: *sf, months: *months, reuse: *reuseSeed}
 	var combos []*benchmarkCombo
 	for _, rt := range routeList {
 		for _, sn := range sutList {
@@ -171,7 +205,13 @@ func run(args []string) error {
 			return fmt.Errorf("check result path %s: %w", path, err)
 		}
 	}
-	return runCombos(ctx, combos, sd, *reps, *out, *topology, *timeout, sweep)
+	if err := runCombos(ctx, combos, sd, *reps, *out, *topology, *timeout, sweep); err != nil {
+		return err
+	}
+	// The sweep is over, so the seed it shared has no next reader. Leaving it
+	// would strand the dataset on the source and sit beside the next one,
+	// which loads its own tables without touching these.
+	return wipeSeeds(ctx, routeList, *topology, sd)
 }
 
 type benchmarkCombo struct {
@@ -272,6 +312,41 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd seed, reps int,
 // validateTopologyDSNs checks every selected route against the topology before
 // anything is provisioned. A sweep crosses both engines, so it names the exact
 // variable a route is missing rather than falling back to a container.
+// wipeSeeds drops the shared seed from every remote source the sweep read, so
+// the next dataset starts on a clean namespace rather than beside this one. A
+// local source is a container that has already been thrown away.
+func wipeSeeds(ctx context.Context, routeList []string, topology string, sd seed) error {
+	if !sd.reuse || topology == "local" {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, route := range routeList {
+		srcEngine, _, err := harness.ParseRoute(route)
+		if err != nil {
+			return err
+		}
+		dsn := remoteDSN("source", srcEngine)
+		if dsn == "" || seen[srcEngine.Name()] {
+			continue
+		}
+		seen[srcEngine.Name()] = true
+
+		p, err := provider.Remote(srcEngine, dsn)
+		if err != nil {
+			return err
+		}
+		db, err := p.Provision(ctx, harness.ProvisionSpec{Engine: srcEngine, Role: "source"})
+		if err != nil {
+			return err
+		}
+		if err := harness.DropNamespace(ctx, db); err != nil {
+			return fmt.Errorf("wipe %s seed: %w", srcEngine.Name(), err)
+		}
+		log.Printf("wiped %s seed from the %s source", sd.label(), srcEngine.Name())
+	}
+	return nil
+}
+
 func validateTopologyDSNs(routeList []string, topology string) error {
 	if topology == "local" {
 		return nil

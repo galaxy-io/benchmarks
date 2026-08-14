@@ -5,7 +5,11 @@ locals {
       "postgresql://bench:%s@%s:5432/bench?sslmode=require",
       random_password.rds[0].result, aws_db_instance.rds[end].address
       ) : format(
-      "mysql://bench:%s@%s:3306/bench?tls=true",
+      // skip-verify, not true: RDS presents a certificate signed by the Amazon
+      // RDS CA, which is in no default trust store, and tls=true verifies the
+      // chain. This encrypts without verifying it, matching what sslmode=require
+      // does on the postgres side, so both engines cross the wire the same way.
+      "mysql://bench:%s@%s:3306/bench?tls=skip-verify",
       random_password.rds[0].result, aws_db_instance.rds[end].address
     )
   }
