@@ -6,18 +6,31 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 // TableParity is one table's row counts on both sides.
 type TableParity struct {
-	Table  string `json:"table"`
-	Source int64  `json:"source"`
-	Sink   int64  `json:"sink"`
-	Match  bool   `json:"match"`
+	Table      string `json:"table"`
+	Source     int64  `json:"source"`
+	Sink       int64  `json:"sink"`
+	CountMatch bool   `json:"countMatch"`
+	Match      bool   `json:"match"`
+}
+
+// Endpoint records where one end ran without persisting credentials or a DSN.
+type Endpoint struct {
+	Engine   string `json:"engine"`
+	Provider string `json:"provider"`
+	Label    string `json:"label,omitempty"`
 }
 
 // Rep is one repetition: fresh containers, fresh seed, one timed run.
@@ -32,11 +45,15 @@ type Rep struct {
 
 // Result is the JSON document one benchmark invocation emits.
 type Result struct {
-	SUT      string `json:"sut"`
-	Scenario string `json:"scenario"`
-	Route    string `json:"route"`
-	Dataset  string `json:"dataset"`
-	Rows     int64  `json:"rows"`
+	SUT      string   `json:"sut"`
+	Scenario string   `json:"scenario"`
+	Route    string   `json:"route"`
+	Dataset  string   `json:"dataset"`
+	Rows     int64    `json:"rows"`
+	Cohort   string   `json:"cohort"`
+	Topology string   `json:"topology"`
+	Source   Endpoint `json:"source"`
+	Sink     Endpoint `json:"sink"`
 
 	Image  string         `json:"image"`
 	Native bool           `json:"native"`
@@ -51,9 +68,16 @@ type Result struct {
 	MedianRowsPerSec  float64 `json:"medianRowsPerSec"`
 	ParityPass        bool    `json:"parityPass"`
 
-	OS   string `json:"os"`
-	Arch string `json:"arch"`
-	CPUs int    `json:"cpus"`
+	OS           string `json:"os"`
+	Arch         string `json:"arch"`
+	CPUs         int    `json:"cpus"`
+	CPUModel     string `json:"cpuModel,omitempty"`
+	MemoryBytes  uint64 `json:"memoryBytes,omitempty"`
+	GoVersion    string `json:"goVersion"`
+	Machine      string `json:"machine,omitempty"`
+	GitCommit    string `json:"gitCommit,omitempty"`
+	GitDirty     bool   `json:"gitDirty"`
+	Verification string `json:"verification"`
 }
 
 // Aggregate fills the medians, spread, and overall parity from the reps.
@@ -90,34 +114,38 @@ func median(s []float64) float64 {
 func CheckParity(ctx context.Context, source, sink *DB, tables []string) ([]TableParity, bool, error) {
 	pass := true
 	out := make([]TableParity, 0, len(tables))
-	for _, t := range tables {
-		p := TableParity{Table: t}
-		n, err := source.Engine.Count(ctx, source, t)
+	for _, table := range tables {
+		p := TableParity{Table: table}
+		n, err := source.Engine.Count(ctx, source, table)
 		if err != nil {
-			return nil, false, fmt.Errorf("count source %s: %w", t, err)
+			return nil, false, fmt.Errorf("count source %s: %w", table, err)
 		}
 		p.Source = n
-		if n, err = sink.Engine.Count(ctx, sink, t); err != nil {
-			log.Printf("sink count %s: %v", t, err)
+		if n, err = sink.Engine.Count(ctx, sink, table); err != nil {
+			log.Printf("sink count %s: %v", table, err)
 			p.Sink = -1
 		} else {
 			p.Sink = n
 		}
-		p.Match = p.Source == p.Sink
+		p.CountMatch = p.Source == p.Sink
+		p.Match = p.CountMatch
 		pass = pass && p.Match
 		out = append(out, p)
 	}
 	return out, pass, nil
 }
 
-// WriteResult writes the result JSON as dir/{date}/{sut}/{scenario}-{route}-{dataset}.json,
-// overwriting any same-day result for the same triple, and returns the path.
+// ResultPath returns the immutable output path for a result.
+func ResultPath(dir string, r *Result) string {
+	name := fmt.Sprintf("%s-%s-%s-%s.json", r.Scenario, r.Route, r.Dataset, safeSlug(r.Topology))
+	return filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), safeSlug(r.Cohort), r.SUT, name)
+}
+
+// WriteResult writes a result under its date and cohort without overwriting an
+// earlier invocation, and returns the path.
 func WriteResult(dir string, r *Result) (string, error) {
-	r.OS = runtime.GOOS
-	r.Arch = runtime.GOARCH
-	r.CPUs = runtime.NumCPU()
-	name := fmt.Sprintf("%s-%s-%s.json", r.Scenario, r.Route, r.Dataset)
-	path := filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), r.SUT, name)
+	populateHostMetadata(r)
+	path := ResultPath(dir, r)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
@@ -125,5 +153,50 @@ func WriteResult(dir string, r *Result) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return path, os.WriteFile(path, append(data, '\n'), 0o644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	return path, f.Close()
+}
+
+func populateHostMetadata(r *Result) {
+	r.OS = runtime.GOOS
+	r.Arch = runtime.GOARCH
+	r.CPUs = runtime.NumCPU()
+	r.GoVersion = runtime.Version()
+	if info, err := cpu.Info(); err == nil && len(info) > 0 {
+		r.CPUModel = info[0].ModelName
+	}
+	if info, err := mem.VirtualMemory(); err == nil {
+		r.MemoryBytes = info.Total
+	}
+	if r.Machine == "" {
+		r.Machine = os.Getenv("BENCH_MACHINE")
+	}
+	if out, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+		r.GitCommit = strings.TrimSpace(string(out))
+	}
+	if out, err := exec.Command("git", "status", "--porcelain").Output(); err == nil {
+		r.GitDirty = len(out) > 0
+	}
+}
+
+func safeSlug(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "unlabeled"
+	}
+	return b.String()
 }
