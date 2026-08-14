@@ -109,6 +109,30 @@ func main() {
 	}
 }
 
+// parseSUTs resolves -sut into the tools to run: "all", or a comma-separated
+// list, so one invocation can compare a few tools over a shared seed rather
+// than reseeding once per tool.
+func parseSUTs(value string) ([]string, error) {
+	if value == "all" {
+		return sut.Names, nil
+	}
+	var out []string
+	for _, name := range strings.Split(value, ",") {
+		name = strings.TrimSpace(name)
+		if !slices.Contains(sut.Names, name) {
+			return nil, fmt.Errorf("unknown sut %q (known: all, %s)", name, strings.Join(sut.Names, ", "))
+		}
+		if slices.Contains(out, name) {
+			return nil, fmt.Errorf("sut %q listed twice", name)
+		}
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no sut selected")
+	}
+	return out, nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: bench list")
 	fmt.Fprintln(os.Stderr, "       bench run [flags]  (bench run -h for flags)")
@@ -139,13 +163,16 @@ func run(args []string) error {
 	}{
 		{"scenario", *scenario, scenarios},
 		{"route", *route, append([]string{"all"}, routes...)},
-		{"sut", *sutName, append([]string{"all"}, sut.Names...)},
 		{"dataset", *dataset, datanames},
 		{"topology", *topology, topologies},
 	} {
 		if !slices.Contains(c.known, c.val) {
 			return fmt.Errorf("unknown %s %q (known: %s)", c.name, c.val, strings.Join(c.known, ", "))
 		}
+	}
+	sutList, err := parseSUTs(*sutName)
+	if err != nil {
+		return err
 	}
 	if *reps < 1 {
 		return fmt.Errorf("reps must be at least 1, got %d", *reps)
@@ -160,10 +187,6 @@ func run(args []string) error {
 	ctx := context.Background()
 
 	sweep := *sutName == "all" || *route == "all"
-	sutList := []string{*sutName}
-	if *sutName == "all" {
-		sutList = sut.Names
-	}
 	routeList := []string{*route}
 	if *route == "all" {
 		routeList = routes

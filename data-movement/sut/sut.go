@@ -13,6 +13,7 @@ import (
 	"github.com/galaxy-io/benchmarks/data-movement/sut/ingestr"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/native"
 	"github.com/galaxy-io/benchmarks/data-movement/sut/olake"
+	"github.com/galaxy-io/benchmarks/data-movement/sut/peerdb"
 )
 
 // SUT is one system under test. Setup is untimed preparation; Run is the
@@ -28,7 +29,7 @@ type SUT interface {
 }
 
 // Names lists every SUT, in display order.
-var Names = []string{"filament", "ingestr", "dlt", "airbyte", "debezium", "olake", "native"}
+var Names = []string{"filament", "ingestr", "dlt", "airbyte", "debezium", "olake", "peerdb", "native"}
 
 // New builds the named SUT for a route, or nil for an unknown name.
 func New(name, route string) SUT {
@@ -45,6 +46,8 @@ func New(name, route string) SUT {
 		return debezium.New(route)
 	case "olake":
 		return olake.New(route)
+	case "peerdb":
+		return peerdb.New(route)
 	case "native":
 		return native.New(route)
 	}
