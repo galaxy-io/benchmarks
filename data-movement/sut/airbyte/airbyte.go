@@ -1,10 +1,8 @@
-// Package airbyte runs Airbyte's connector images directly: source piped to
-// destination over the Airbyte protocol, which is the data path the platform
-// orchestrates around. The platform itself (server, worker, Temporal) is
-// deliberately absent; it schedules syncs but moves no rows. An orchestrator
-// container with the host docker socket launches the connectors as siblings,
-// sharing configs through a named volume. Typing stays enabled because that
-// is Airbyte's default and the only mode that lands rows in final tables.
+// Package airbyte pipes Airbyte source and destination connector images over
+// the Airbyte protocol. It omits the server, worker, and Temporal services. A
+// driver container uses the host Docker socket to launch both connectors and a
+// named volume to share configuration. Destination typing is enabled so records
+// are written to final tables.
 package airbyte
 
 import (
@@ -14,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
@@ -30,11 +29,14 @@ const (
 	DestPGImage      = "airbyte/destination-postgres:3.0.13"
 	SourceMySQLImage = "airbyte/source-mysql:3.53.1"
 	DestMySQLImage   = "airbyte/destination-mysql:1.1.1"
-
-	// ConnectorMemoryLimit caps each connector container, as the platform's
-	// pod resource defaults do; the JVM sizes its heap from the cgroup.
-	ConnectorMemoryLimit = "4g"
 )
+
+func connectorMemoryLimit() string {
+	if limit := os.Getenv("BENCH_AIRBYTE_CONNECTOR_MEMORY"); limit != "" {
+		return limit
+	}
+	return "16g"
+}
 
 // sourceImage picks the source connector image for an engine.
 func sourceImage(e harness.Engine) string {
@@ -44,7 +46,7 @@ func sourceImage(e harness.Engine) string {
 	case harness.MySQL:
 		return SourceMySQLImage
 	}
-	panic(fmt.Sprintf("no source connector for engine %v", e))
+	return ""
 }
 
 // destImage picks the destination connector image for an engine.
@@ -55,7 +57,7 @@ func destImage(e harness.Engine) string {
 	case harness.MySQL:
 		return DestMySQLImage
 	}
-	panic(fmt.Sprintf("no destination connector for engine %v", e))
+	return ""
 }
 
 // Airbyte pipes the source connector into the destination connector.
@@ -66,11 +68,16 @@ type Airbyte struct {
 	volume    string
 	network   string
 	script    string
+	sourceCtr string
+	destCtr   string
 }
 
 // New returns the airbyte tool with the route's connector images pinned.
 func New(route string) *Airbyte {
-	src, dst, _ := harness.ParseRoute(route)
+	src, dst, err := harness.ParseRoute(route)
+	if err != nil {
+		return &Airbyte{}
+	}
 	return &Airbyte{srcImage: sourceImage(src), dstImage: destImage(dst)}
 }
 
@@ -89,7 +96,7 @@ func (a *Airbyte) Config() map[string]any {
 		"syncMode":          "full_refresh/overwrite",
 		"replicationMethod": "Standard",
 		"typeDedupe":        true,
-		"connectorMemory":   ConnectorMemoryLimit,
+		"connectorMemory":   connectorMemoryLimit(),
 	}
 }
 
@@ -108,6 +115,7 @@ func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) 
 
 	a.volume = env.RunID + "-airbyte"
 	a.network = env.Net.Name
+	memoryLimit := connectorMemoryLimit()
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
 			Image:  Image,
@@ -149,32 +157,51 @@ func (a *Airbyte) Setup(ctx context.Context, env *harness.Env, tables []string) 
 		return fmt.Errorf("copy catalog: %w", err)
 	}
 
-	// The connectors carry the run label so the sampler picks them up. Each
-	// gets the memory limit the platform's own pod defaults impose; without
-	// one, every connector JVM sizes its heap from the host and two of them
-	// thrash the machine at scale.
-	connector := func(image, role, verb, cfg string) string {
-		return fmt.Sprintf(
-			"docker run --rm -i --network %s -m %s -v %s:/secrets -l %s=%s -l %s=%s %s %s --config /secrets/%s.json --catalog /secrets/catalog.json",
-			env.Net.Name, ConnectorMemoryLimit, a.volume, harness.LabelRun, env.RunID, harness.LabelRole, role, image, verb, cfg)
+	// Create both job containers during setup. The timed window starts their
+	// connector processes, but does not include Docker create/pull overhead.
+	a.sourceCtr = env.RunID + "-airbyte-source"
+	a.destCtr = env.RunID + "-airbyte-destination"
+	connector := func(name, image, role, verb, cfg string, interactive bool) error {
+		args := []string{"docker", "create", "--name", name, "--network", env.Net.Name,
+			"-m", memoryLimit, "-v", a.volume + ":/secrets",
+			"-l", harness.LabelRun + "=" + env.RunID, "-l", harness.LabelRole + "=" + role}
+		if interactive {
+			args = append(args, "-i")
+		}
+		args = append(args, image, verb, "--config", "/secrets/"+cfg+".json", "--catalog", "/secrets/catalog.json")
+		code, out, err := a.exec(ctx, args)
+		if err != nil {
+			return err
+		}
+		if code != 0 {
+			return fmt.Errorf("create %s exited %d:\n%s", role, code, out)
+		}
+		return nil
+	}
+	if err := connector(a.sourceCtr, a.srcImage, "airbyte-source", "read", "source", false); err != nil {
+		return err
+	}
+	if err := connector(a.destCtr, a.dstImage, "airbyte-destination", "write", "destination", true); err != nil {
+		return err
 	}
 	// The platform's worker forwards only RECORD and STATE to the
 	// destination; it rejects LOG and TRACE, so the pipe filters the same way.
 	a.script = "set -o pipefail\n" +
-		connector(a.srcImage, "airbyte-source", "read", "source") +
+		"docker start -a " + a.sourceCtr +
 		` | grep -E '"type":"(RECORD|STATE)"' | ` +
-		connector(a.dstImage, "airbyte-destination", "write", "destination")
+		"docker start -a -i " + a.destCtr
 	return nil
 }
 
-// Teardown kills any straggling connectors, then removes the orchestrator and volume.
+// Teardown removes the two job containers, orchestrator, and shared volume.
 func (a *Airbyte) Teardown(ctx context.Context) {
 	if a.container == nil {
 		return
 	}
-	for _, role := range []string{"airbyte-source", "airbyte-destination"} {
-		_, _, _ = a.exec(ctx, []string{"sh", "-c",
-			"docker ps -q -f label=" + harness.LabelRole + "=" + role + " | xargs -r docker rm -f"})
+	for _, name := range []string{a.sourceCtr, a.destCtr} {
+		if name != "" {
+			_, _, _ = a.exec(ctx, []string{"docker", "rm", "-f", name})
+		}
 	}
 	_ = a.container.Terminate(ctx, tc.RemoveVolumes(a.volume))
 }
@@ -269,18 +296,19 @@ func sourceConfig(db *harness.DB) ([]byte, error) {
 			"schemas":            []string{harness.Namespace},
 			"username":           user,
 			"password":           pass,
-			"ssl_mode":           map[string]any{"mode": "disable"},
+			"ssl_mode":           map[string]any{"mode": sslMode(db.InternalDSN)},
 			"tunnel_method":      map[string]any{"tunnel_method": "NO_TUNNEL"},
 			"replication_method": map[string]any{"method": "Standard"},
 		})
 	case harness.MySQL:
+		ssl := mysqlTLS(db.InternalDSN)
 		return json.Marshal(map[string]any{
 			"host":               host,
 			"port":               port,
 			"database":           name,
 			"username":           user,
 			"password":           pass,
-			"ssl_mode":           map[string]any{"mode": "preferred"},
+			"ssl_mode":           map[string]any{"mode": map[bool]string{true: "required", false: "disabled"}[ssl]},
 			"tunnel_method":      map[string]any{"tunnel_method": "NO_TUNNEL"},
 			"replication_method": map[string]any{"method": "STANDARD"},
 		})
@@ -303,7 +331,7 @@ func destConfig(db *harness.DB) ([]byte, error) {
 			"schema":        harness.Namespace,
 			"username":      user,
 			"password":      pass,
-			"ssl_mode":      map[string]any{"mode": "disable"},
+			"ssl_mode":      map[string]any{"mode": sslMode(db.InternalDSN)},
 			"tunnel_method": map[string]any{"tunnel_method": "NO_TUNNEL"},
 		})
 	case harness.MySQL:
@@ -313,7 +341,7 @@ func destConfig(db *harness.DB) ([]byte, error) {
 			"database":      name,
 			"username":      user,
 			"password":      pass,
-			"ssl":           true,
+			"ssl":           mysqlTLS(db.InternalDSN),
 			"tunnel_method": map[string]any{"tunnel_method": "NO_TUNNEL"},
 		})
 	}
@@ -321,17 +349,49 @@ func destConfig(db *harness.DB) ([]byte, error) {
 }
 
 // splitDSN breaks a database URL into the parts the connector configs need.
+// sslMode reads the postgres dsn's sslmode, which the connector names the same
+// way libpq does. A container serves plaintext and rds refuses it, so the mode
+// has to follow the dsn rather than be assumed.
+func sslMode(dsn string) string {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "disable"
+	}
+	if m := u.Query().Get("sslmode"); m != "" {
+		return m
+	}
+	return "disable"
+}
+
 func splitDSN(dsn string) (host string, port int, db, user, pass string, err error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
 		return "", 0, "", "", "", err
 	}
-	port, err = strconv.Atoi(u.Port())
+	portText := u.Port()
+	if portText == "" {
+		switch u.Scheme {
+		case "postgres", "postgresql":
+			portText = "5432"
+		case "mysql":
+			portText = "3306"
+		}
+	}
+	port, err = strconv.Atoi(portText)
 	if err != nil {
 		return "", 0, "", "", "", fmt.Errorf("port in %q: %w", u.Host, err)
 	}
 	pass, _ = u.User.Password()
 	return u.Hostname(), port, strings.TrimPrefix(u.Path, "/"), u.User.Username(), pass, nil
+}
+
+func mysqlTLS(dsn string) bool {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return false
+	}
+	tls := u.Query().Get("tls")
+	return tls != "" && tls != "false"
 }
 
 // exec runs cmd in the orchestrator, returning its exit code and full output.

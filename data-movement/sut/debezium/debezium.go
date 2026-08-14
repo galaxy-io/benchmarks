@@ -1,10 +1,8 @@
-// Package debezium runs Debezium Server (quay.io/debezium/server) with its
-// JDBC sink: one container, no Kafka, the strongest configuration a user can
-// reach without standing up a broker. A full load measures Debezium's initial
-// snapshot path, not the steady-state streaming it is built for; the result
-// should always say so. A CDC server never exits, so Run polls the sink until
-// every table's row count matches the source, then stops the clock. The poll
-// quantizes wall time by its interval, noise against real load times.
+// Package debezium runs Debezium Server with its JDBC sink in one container and
+// without Kafka. A full load measures the initial snapshot, not steady-state
+// streaming. Debezium Server does not exit after a snapshot, so Run stops when
+// every destination row count reaches its source count. Polling adds up to one
+// poll interval to the measured completion time.
 package debezium
 
 import (
@@ -13,10 +11,13 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	tc "github.com/testcontainers/testcontainers-go"
+	tcexec "github.com/testcontainers/testcontainers-go/exec"
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
@@ -26,6 +27,10 @@ const Image = "quay.io/debezium/server:3.6.0.Final"
 // pollInterval paces the convergence check against the sink.
 const pollInterval = 500 * time.Millisecond
 
+// defaultBatchSize is used for source fetches, engine batches, and sink writes.
+// BENCH_DEBEZIUM_BATCH_SIZE can override it before a benchmark cohort.
+const defaultBatchSize = 32768
+
 // Debezium runs Debezium Server with the JDBC sink.
 type Debezium struct {
 	route     string
@@ -33,10 +38,19 @@ type Debezium struct {
 	env       *harness.Env
 	tables    []string
 	expected  map[string]int64
+	workers   int
+	batchSize int
+	slotName  string
+	processID string
 }
 
 // New returns the debezium tool for a route.
-func New(route string) *Debezium { return &Debezium{route: route} }
+func New(route string) *Debezium {
+	return &Debezium{
+		route: route, workers: 32,
+		batchSize: tuningInt("BENCH_DEBEZIUM_BATCH_SIZE", defaultBatchSize),
+	}
+}
 
 // Name identifies the tool.
 func (d *Debezium) Name() string { return "debezium" }
@@ -52,7 +66,11 @@ func (d *Debezium) Config() map[string]any {
 	return map[string]any{
 		"sink":               "jdbc",
 		"snapshotMode":       "initial_only",
-		"snapshotMaxThreads": 8,
+		"snapshotMaxThreads": d.workers,
+		"snapshotFetchSize":  d.batchSize,
+		"maxBatchSize":       d.batchSize,
+		"maxQueueSize":       d.batchSize * 4,
+		"sinkBatchSize":      d.batchSize,
 		"insertMode":         "upsert",
 		"primaryKeyMode":     "record_key",
 		"schemaEvolution":    "basic",
@@ -61,10 +79,12 @@ func (d *Debezium) Config() map[string]any {
 }
 
 // Setup records the source row counts, prepares the sink namespace, and
-// creates the server container, unstarted, with its config baked in.
+// starts an idle server container with its config baked in. Run starts the
+// Debezium process itself, keeping Docker startup outside the timed window.
 func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	d.env = env
 	d.tables = tables
+	d.slotName = strings.ReplaceAll(env.RunID, "-", "_")
 
 	props, err := d.properties(env, tables)
 	if err != nil {
@@ -101,7 +121,9 @@ func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string)
 
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
-			Image: Image,
+			Image:      Image,
+			Entrypoint: []string{"/bin/sh", "-c"},
+			Cmd:        []string{"sleep infinity"},
 			Files: []tc.ContainerFile{{
 				Reader:            strings.NewReader(props),
 				ContainerFilePath: "/debezium/config/application.properties",
@@ -110,7 +132,7 @@ func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string)
 			Labels:   map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "debezium"},
 			Networks: []string{env.Net.Name},
 		},
-		Started: false,
+		Started: true,
 	})
 	if err != nil {
 		return fmt.Errorf("debezium container: %w", err)
@@ -126,12 +148,20 @@ func (d *Debezium) Teardown(ctx context.Context) {
 	}
 }
 
-// Run starts the server and blocks until every table converges on the sink.
+// Run starts the server process and blocks until every table converges on the sink.
 // The server keeps running after the snapshot; convergence is completion. An
 // early exit gets one final check, since the last events may have landed.
 func (d *Debezium) Run(ctx context.Context) error {
-	if err := d.container.Start(ctx); err != nil {
-		return fmt.Errorf("debezium start: %w", err)
+	code, out, err := d.exec(ctx, []string{"/bin/sh", "-c", "/debezium/run.sh >/tmp/debezium.log 2>&1 & echo $!"})
+	if err != nil {
+		return fmt.Errorf("debezium start process: %w", err)
+	}
+	if code != 0 {
+		return fmt.Errorf("debezium start process exited %d:\n%s", code, out)
+	}
+	d.processID = strings.TrimSpace(out)
+	if d.processID == "" {
+		return fmt.Errorf("debezium start process returned no pid")
 	}
 	sink, err := d.env.Sink.Open()
 	if err != nil {
@@ -148,8 +178,8 @@ func (d *Debezium) Run(ctx context.Context) error {
 		if len(remaining) == 0 {
 			return nil
 		}
-		state, serr := d.container.State(ctx)
-		if serr == nil && !state.Running {
+		running, serr := d.processRunning(ctx)
+		if serr == nil && !running {
 			remaining, err = d.advance(ctx, sink, remaining)
 			if err != nil {
 				return err
@@ -157,8 +187,8 @@ func (d *Debezium) Run(ctx context.Context) error {
 			if len(remaining) == 0 {
 				return nil
 			}
-			return fmt.Errorf("debezium exited %d before %s converged:\n%s",
-				state.ExitCode, strings.Join(remaining, ", "), d.logs(ctx))
+			return fmt.Errorf("debezium exited before %s converged:\n%s",
+				strings.Join(remaining, ", "), d.logs(ctx))
 		}
 		select {
 		case <-ctx.Done():
@@ -215,6 +245,10 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.sink.jdbc.insert.mode=upsert",
 		"debezium.sink.jdbc.primary.key.mode=record_key",
 		"debezium.sink.jdbc.schema.evolution=basic",
+		// Use the same calibrated size for source fetches, engine batches, and
+		// sink writes.
+		fmt.Sprintf("debezium.sink.jdbc.batch.size=%d", d.batchSize),
+		fmt.Sprintf("debezium.sink.jdbc.connection.pool.max_size=%d", d.workers),
 		// $$ keeps quarkus from expanding the placeholder before debezium sees it.
 		"debezium.sink.jdbc.collection.name.format=" + harness.Namespace + ".$${source.table}",
 		"debezium.source.database.hostname=" + srcHost,
@@ -224,22 +258,46 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.source.topic.prefix=dbz",
 		"debezium.source.table.include.list=" + strings.Join(qualified, ","),
 		"debezium.source.snapshot.mode=initial_only",
-		"debezium.source.snapshot.max.threads=8",
+		fmt.Sprintf("debezium.source.snapshot.max.threads=%d", d.workers),
+		fmt.Sprintf("debezium.source.snapshot.fetch.size=%d", d.batchSize),
+		fmt.Sprintf("debezium.source.max.batch.size=%d", d.batchSize),
+		// Hold four batches in the queue. Debezium requires the queue size to
+		// exceed the batch size.
+		fmt.Sprintf("debezium.source.max.queue.size=%d", d.batchSize*4),
 		"debezium.source.offset.storage.file.filename=/tmp/offsets.dat",
 		"debezium.source.offset.flush.interval.ms=1000",
 	}
 	switch env.Source.Engine {
 	case harness.Postgres:
+		sourceURL, _ := url.Parse(env.Source.InternalDSN)
+		sslMode := sourceURL.Query().Get("sslmode")
+		if sslMode == "" {
+			sslMode = "disable"
+		}
 		lines = append(lines,
 			"debezium.source.connector.class=io.debezium.connector.postgresql.PostgresConnector",
 			"debezium.source.database.dbname="+srcDB,
 			"debezium.source.plugin.name=pgoutput",
+			"debezium.source.database.sslmode="+sslMode,
+			"debezium.source.slot.name="+d.slotName,
+			"debezium.source.publication.name="+d.slotName,
+			"debezium.source.slot.drop.on.stop=true",
 		)
 	case harness.MySQL:
+		sourceURL, _ := url.Parse(env.Source.InternalDSN)
+		sslMode := "disabled"
+		switch sourceURL.Query().Get("tls") {
+		case "true":
+			sslMode = "verify_identity"
+		case "", "false":
+		default:
+			sslMode = "required"
+		}
 		lines = append(lines,
 			"debezium.source.connector.class=io.debezium.connector.mysql.MySqlConnector",
 			"debezium.source.database.include.list="+srcDB,
 			"debezium.source.database.server.id=18054",
+			"debezium.source.database.ssl.mode="+sslMode,
 			"debezium.source.schema.history.internal=io.debezium.storage.file.history.FileSchemaHistory",
 			"debezium.source.schema.history.internal.file.filename=/tmp/schemahistory.dat",
 		)
@@ -257,11 +315,32 @@ func jdbcURL(db *harness.DB) (string, error) {
 	}
 	switch db.Engine {
 	case harness.Postgres:
-		return fmt.Sprintf("jdbc:postgresql://%s:%s/%s", host, port, name), nil
+		u, _ := url.Parse(db.InternalDSN)
+		query := u.Query()
+		return fmt.Sprintf("jdbc:postgresql://%s:%s/%s?%s", host, port, name, query.Encode()), nil
 	case harness.MySQL:
-		return fmt.Sprintf("jdbc:mysql://%s:%s/%s", host, port, name), nil
+		u, _ := url.Parse(db.InternalDSN)
+		query := url.Values{}
+		switch u.Query().Get("tls") {
+		case "true":
+			query.Set("sslMode", "VERIFY_IDENTITY")
+		case "", "false":
+			query.Set("sslMode", "DISABLED")
+		default:
+			query.Set("sslMode", "REQUIRED")
+		}
+		return fmt.Sprintf("jdbc:mysql://%s:%s/%s?%s", host, port, name, query.Encode()), nil
 	}
 	return "", fmt.Errorf("no jdbc dialect for engine %v", db.Engine)
+}
+
+func tuningInt(name string, fallback int) int {
+	if raw := os.Getenv(name); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			return value
+		}
+	}
+	return fallback
 }
 
 // splitDSN breaks a database URL into the parts the config needs.
@@ -274,18 +353,33 @@ func splitDSN(dsn string) (host, port, db, user, pass string, err error) {
 	return u.Hostname(), u.Port(), strings.TrimPrefix(u.Path, "/"), u.User.Username(), pass, nil
 }
 
-func (d *Debezium) logs(ctx context.Context) string {
-	r, err := d.container.Logs(ctx)
+func (d *Debezium) exec(ctx context.Context, cmd []string) (int, string, error) {
+	code, r, err := d.container.Exec(ctx, cmd, tcexec.Multiplexed())
 	if err != nil {
-		return "(logs unavailable)"
+		return 0, "", err
 	}
-	defer func() { _ = r.Close() }()
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return "(logs unavailable)"
+		return code, "", err
 	}
 	if len(b) > 4000 {
 		b = b[len(b)-4000:]
 	}
-	return string(b)
+	return code, string(b), nil
+}
+
+func (d *Debezium) processRunning(ctx context.Context) (bool, error) {
+	// A finished orphan may remain as a zombie under the idle PID 1; kill -0
+	// alone considers that alive, so reject the Z process state as well.
+	check := "kill -0 " + d.processID + " && test \"$(awk '{print $3}' /proc/" + d.processID + "/stat)\" != Z"
+	code, _, err := d.exec(ctx, []string{"/bin/sh", "-c", check})
+	return code == 0, err
+}
+
+func (d *Debezium) logs(ctx context.Context) string {
+	_, out, err := d.exec(ctx, []string{"/bin/sh", "-c", "tail -c 4000 /tmp/debezium.log"})
+	if err != nil {
+		return "(logs unavailable)"
+	}
+	return out
 }

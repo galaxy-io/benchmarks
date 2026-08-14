@@ -7,24 +7,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
 
-// The nyc-taxi dataset is the complete NYC TLC trip record history: a trips
-// table holding all yellow-taxi records and an fhv_trips table holding all
-// for-hire records (the fhv files plus the high-volume fhvhv files), about 4B
-// rows in full. TLC's parquet exists in schema eras, so each table unions
-// era-specific projections onto one layout. Months count back from taxiEnd;
-// each era clips to its own file range.
+// The nyc-taxi dataset covers published NYC TLC records from January 2009
+// through December 2024. The trips table contains yellow-taxi records. The
+// fhv_trips table contains FHV and high-volume FHV records. The full dataset is
+// about 4 billion rows. Each table projects its Parquet schema eras onto one
+// layout. Months count backward from taxiEnd, and each era clips to its file
+// range.
 var taxiEnd = month{2024, 12}
 
-// taxiMaxMonths spans January 2009 through taxiEnd, the full history.
+// taxiMaxMonths spans January 2009 through December 2024.
 const taxiMaxMonths = 192
 
-// taxiDDL is the yellow-taxi trips table, valid on both engines. The id column
-// is synthetic: TLC data has no primary key and every SUT wants one. Rows from
-// the lat/lon era (2009-2016) carry zero location ids.
+// taxiDDL is the yellow-taxi trips table for both SQL engines. The source files
+// have no primary key, so the benchmark adds a synthetic id. Rows from the
+// latitude/longitude era (2009-2016) use zero for location ids.
 const taxiDDL = `(id BIGINT PRIMARY KEY, vendor_id INT, pickup_at TIMESTAMP, dropoff_at TIMESTAMP,
  passenger_count INT, trip_distance NUMERIC(15,2), ratecode_id INT, store_and_fwd_flag TEXT,
  pu_location_id INT, do_location_id INT, payment_type INT, fare_amount NUMERIC(15,2),
@@ -123,8 +124,9 @@ var fhvParts = []part{
 }
 
 // SeedTaxi loads the last months of the nyc-taxi dataset into db's bench
-// namespace; taxiMaxMonths covers the full ~4B-row history. Requires duckdb on
-// PATH and network for uncached months.
+// namespace. taxiMaxMonths covers the fixed January 2009 through December 2024
+// range, about 4 billion rows. It requires DuckDB on PATH and network access for
+// uncached months.
 func SeedTaxi(ctx context.Context, db *harness.DB, months int) ([]Table, error) {
 	if months < 1 || months > taxiMaxMonths {
 		return nil, fmt.Errorf("taxi months must be 1..%d, got %d", taxiMaxMonths, months)
@@ -152,6 +154,7 @@ func SeedTaxi(ctx context.Context, db *harness.DB, months int) ([]Table, error) 
 // union as one csv, and loads it.
 func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts []part, begin month) (Table, error) {
 	var selects []string
+	var fileOrdinal int64
 	for _, p := range parts {
 		lo, hi := p.start, p.end
 		if begin.idx() > lo.idx() {
@@ -168,15 +171,21 @@ func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts
 		// range filter keeps counts deterministic and every timestamp inside
 		// mysql's TIMESTAMP range.
 		upper := hi.next()
-		selects = append(selects, fmt.Sprintf(
-			"%s FROM read_parquet(['%s']) WHERE %s >= '%d-%02d-01' AND %s < '%d-%02d-01' AND %s < '%d-%02d-01'",
-			p.sel, strings.Join(files, "','"),
-			p.pickup, lo.y, lo.m, p.pickup, upper.y, upper.m, p.dropoff, upper.next().y, upper.next().m))
+		projection := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(p.sel), "SELECT"))
+		for _, file := range files {
+			// Each monthly file gets a stable 32-bit row-number range. This is
+			// deterministic without globally sorting the full Taxi dataset.
+			idBase := fileOrdinal << 32
+			selects = append(selects, fmt.Sprintf(
+				"SELECT %d + file_row_number AS id, %s FROM read_parquet('%s', file_row_number=true) WHERE %s >= '%d-%02d-01' AND %s < '%d-%02d-01' AND %s < '%d-%02d-01'",
+				idBase, projection, strings.ReplaceAll(file, "'", "''"),
+				p.pickup, lo.y, lo.m, p.pickup, upper.y, upper.m, p.dropoff, upper.next().y, upper.next().m))
+			fileOrdinal++
+		}
 	}
 	if len(selects) == 0 {
 		return Table{}, fmt.Errorf("%s: no files in window", table)
 	}
-
 	dir, err := os.MkdirTemp("", "taxi")
 	if err != nil {
 		return Table{}, err
@@ -185,7 +194,7 @@ func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts
 
 	csv := filepath.Join(dir, table+".csv")
 	script := fmt.Sprintf(
-		"COPY (SELECT row_number() OVER () AS id, * FROM (%s)) TO '%s' (FORMAT csv, HEADER false);",
+		"COPY (SELECT * FROM (%s)) TO '%s' (FORMAT csv, HEADER false);",
 		strings.Join(selects, "\nUNION ALL\n"), csv)
 	if out, err := exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput(); err != nil {
 		return Table{}, fmt.Errorf("duckdb %s export: %w:\n%s", table, err, out)
@@ -216,15 +225,35 @@ func taxiParquet(ctx context.Context, prefix string, lo, hi month) ([]string, er
 		name := fmt.Sprintf("%s_%d-%02d.parquet", prefix, m.y, m.m)
 		path := filepath.Join(cache, name)
 		if _, err := os.Stat(path); err != nil {
-			url := "https://d37ci6vzurychx.cloudfront.net/trip-data/" + name
-			script := fmt.Sprintf(
-				"INSTALL httpfs; LOAD httpfs; COPY (FROM read_parquet('%s')) TO '%s' (FORMAT parquet);",
-				url, path)
-			if out, err := exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput(); err != nil {
-				return nil, fmt.Errorf("download %s: %w:\n%s", name, err, out)
+			if err := downloadTaxiMonth(ctx, name, path); err != nil {
+				return nil, err
 			}
 		}
 		files = append(files, path)
 	}
 	return files, nil
+}
+
+// downloadTaxiMonth fetches one month into path. It writes to a temporary file,
+// renames the file after a successful download, and retries up to three times.
+func downloadTaxiMonth(ctx context.Context, name, path string) error {
+	tmp := path + ".part"
+	script := fmt.Sprintf(
+		"INSTALL httpfs; LOAD httpfs; COPY (FROM read_parquet('%s')) TO '%s' (FORMAT parquet);",
+		"https://d37ci6vzurychx.cloudfront.net/trip-data/"+name, tmp)
+
+	var out []byte
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		out, err = exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput()
+		if err == nil {
+			return os.Rename(tmp, path)
+		}
+		_ = os.Remove(tmp)
+		if ctx.Err() != nil {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * 5 * time.Second)
+	}
+	return fmt.Errorf("download %s: %w:\n%s", name, err, out)
 }

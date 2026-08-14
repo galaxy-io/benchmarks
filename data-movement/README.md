@@ -1,86 +1,139 @@
 # data-movement
 
-Benchmarks data-movement tools: full load and change data capture between Postgres
-and MySQL. Every tool moves the same data on the same hardware, and every row is
-verified before a number is recorded.
+A benchmark harness for moving complete datasets between Postgres, MySQL, and
+Apache Iceberg. Remote databases are the primary benchmark topology.
+Testcontainers support local development and smoke tests.
 
 > [!NOTE]
-> We built [filament](https://github.com/galaxy-io/filament), one of the tools measured here.
+> We built [filament](https://github.com/galaxy-io/filament), one of the systems
+> measured here.
 
 ## Systems under test
 
-Each entry is a SUT, a system under test: the tool a run measures, started by the
-harness, pointed at the same source and destination, and torn down after.
+| SUT | Benchmark path | Routes |
+|-----|----------------|--------|
+| filament | Standalone container | SQL sources to SQL or Iceberg |
+| Ingestr | Official CLI container | Postgres and MySQL |
+| Debezium | Debezium Server with JDBC sink | Postgres and MySQL |
+| Airbyte | Source and destination connector containers | Postgres and MySQL |
+| dlt | Python container with ConnectorX | Postgres/MySQL to Postgres |
+| OLake | Official source container and Iceberg writer | Postgres/MySQL to Iceberg |
+| native | Engine dump client piped to its load client | Same-engine baseline |
 
-| SUT | How it runs | Comparison | Status |
-|-----|-------------|------------|--------|
-| filament | Standalone image | Measured | ✅ |
-| Ingestr | CLI container | Measured | ✅ |
-| Debezium\* | Debezium Server container, JDBC sink | Measured | ✅ |
-| Airbyte | Pinned connector images | Measured | ✅ |
-| dlt | Python container | Measured | ✅ |
-| native | Engine dump client piped into its load client | Baseline | ✅ |
-| Artie | Managed only | Claimed | ❌ |
-| Fivetran | Managed only | Claimed | ❌ |
-| AWS DMS | Managed only | Claimed | ❌ |
+Debezium is a CDC engine. The full-load benchmark measures its initial snapshot,
+not the steady-state streaming workload it is primarily designed for.
 
-- **Measured**: run by the harness. Identical source and destination containers,
-  pinned images, identical resource caps, fresh containers per repetition.
-- **Baseline**: the floor a tool has to beat, run by the same harness. Same-engine
-  routes only; cross-engine routes have no native pipeline.
-- **Claimed**: the vendor's published number, cited. Filament runs on matching
-  infrastructure: same instance class, dataset, and workload.
+## Workload
 
-\* Debezium is a CDC engine; a full load measures its initial snapshot, the
-first step of every deployment, not the steady-state streaming it is built for.
+The implemented scenario is a full load of either TPC-H or NYC Taxi data. The
+available routes are:
 
-## Benchmarks
-
-Routes: `pg → pg`, `pg → mysql`, `mysql → mysql`, `mysql → pg`. (where applicable)
-
-| Scenario | Dataset | Routes | Shows | Status |
-|----------|---------|--------|-------|--------|
-| Full load | TPC-H | All four | Rows per second, wall time | ✅ |
-| CDC latency | pgbench churn | pg → pg, mysql → mysql | End-to-end lag, p50/p95/p99 | Planned |
-| Mixed churn | TPROC-C | pg → pg, mysql → mysql | Sustained apply rate under load | Planned |
-| Retention | pgbench churn | pg → pg, mysql → mysql | WAL/binlog held on the source | Planned |
-| Recovery | TPC-H | pg → pg | Time to resume after a mid-load kill | Planned |
-
-## Measurement
-
-- Runs are timed by watching the destination, never by asking the tool
-- CDC lag (planned): heartbeat rows carrying commit timestamps, read back from the
-  destination, reported as p50/p95/p99
-- Per-container CPU, memory, and network from the Docker stats API
-- Row counts must match between source and destination, or no result is recorded;
-  content checksums are planned
-
-Each run emits one JSON document: timings, resource use, parity, the image and
-configuration under test, and the host's OS, architecture, and CPU count.
-
-## Running
-
-Requires Docker and `duckdb`.
-
-```sh
-go run ./cmd/bench list                                              # scenarios, routes, suts
-go run ./cmd/bench run -scenario full-load -route pg-pg -sut filament
-go run ./cmd/bench run -sut all -route all                           # sweep every supported pair
+```text
+pg → pg       pg → mysql       pg → iceberg
+mysql → pg    mysql → mysql    mysql → iceberg
 ```
 
-Each run writes one JSON document to `results/{date}/{sut}/`. Official results are
-produced on a pinned EC2 instance type; vendor-matched results use the instance
-type the vendor published. See [results/METHODOLOGY.md](results/METHODOLOGY.md).
+Every repetition starts from an empty benchmark namespace and seeds the same
+source tables. Setup finishes before the timer starts. The timed window begins
+when the harness starts the prepared transfer and includes any process
+initialization that follows. A result is accepted only when every destination
+table has the source row count.
+
+The harness records timing, effective SUT configuration, endpoint topology,
+host details, Docker image IDs, and per-container CPU, memory, and network use.
+For remote runs, Docker metrics cover the SUT containers; database-side metrics
+are intentionally not presented as part of SUT resource use.
+
+## Running remotely
+
+Remote runs require distinct source and sink endpoints. Labels are optional but
+recommended because they make the result cohort self-describing.
+
+Each end is named by its role and its engine, `BENCH_<ROLE>_<ENGINE>_DSN`, so one
+sweep can cross both engines without a mysql route receiving the postgres
+endpoint. Set the ends the selected routes need; `-route all` needs all of them.
+
+```sh
+export BENCH_SOURCE_POSTGRES_DSN='postgresql://bench:...@pg-source:5432/bench?sslmode=require'
+export BENCH_SINK_POSTGRES_DSN='postgresql://bench:...@pg-sink:5432/bench?sslmode=require'
+export BENCH_SOURCE_MYSQL_DSN='mysql://bench:...@my-source:3306/bench?tls=true'
+export BENCH_SINK_MYSQL_DSN='mysql://bench:...@my-sink:3306/bench?tls=true'
+export BENCH_SINK_ICEBERG_DSN='s3://bench-warehouse-0a1b2c3d'
+export AWS_REGION='us-east-2'
+export BENCH_SOURCE_POSTGRES_LABEL='rds-pg-source'
+export BENCH_MACHINE='c7i.16xlarge'
+
+go run ./cmd/bench run \
+  -topology remote \
+  -scenario full-load \
+  -dataset tpch -sf 1 \
+  -route pg-pg -sut all \
+  -reps 5 -timeout 24h
+```
+
+`-timeout` bounds each repetition, including provisioning, seeding, setup,
+transfer, and validation. Some startup and cleanup operations have shorter
+component-specific deadlines. Reference parallelism is explicit: 32 for
+Filament, OLake, Debezium, and Ingestr, and 16 for dlt. Debezium uses
+32,768-row batches and Airbyte connectors have 16 GiB limits.
+`BENCH_AIRBYTE_CONNECTOR_MEMORY`, `BENCH_DEBEZIUM_BATCH_SIZE`, and
+`BENCH_DLT_BATCH_SIZE` remain calibration overrides; effective values are
+written into the result.
+
+Multi-SUT sweeps rotate their execution order between repetitions so one tool
+does not always receive the coldest or warmest run position.
+
+A remote Iceberg sink takes `BENCH_SINK_ICEBERG_DSN` as `s3://bucket`, plus
+`AWS_REGION`. Leave the credential variables unset on the benchmark host: every
+writer, the REST catalog, and DuckDB then walk the AWS default chain to the
+host's instance role, and the SDK refreshes those credentials for as long as the
+sweep runs. Injected temporary credentials do not refresh, so a long sweep can
+outlive them. `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with optional
+`AWS_SESSION_TOKEN`, remain the fallback for reaching S3 from a host that has no
+instance role; supply the key and secret together or not at all. A local Iceberg
+sink needs none of them, since MinIO carries its own fixed test credentials.
+
+## Running locally
+
+Local mode is useful for development and smoke checks. It creates fresh source
+and sink services with Testcontainers for every repetition.
+
+```sh
+go run ./cmd/bench list
+go run ./cmd/bench run -topology local -route pg-pg -sut filament -sf 0.01
+go run ./cmd/bench run -topology local -route all -sut all -sf 0.01
+```
+
+`hybrid` mode is also available and requires exactly one remote end per selected
+route, named the same way.
+
+## Results
+
+Results from different machines, topologies, endpoints, commits, or cohorts are
+kept separate. Files are written without overwriting an earlier invocation:
+
+```text
+results/{date}/{cohort}/{sut}/{scenario}-{route}-{dataset}-{topology}.json
+```
+
+Render one cohort with:
+
+```sh
+python3 results/scripts/generate.py 2026-08-14 --cohort 20260814T120000Z
+```
+
+See [results/METHODOLOGY.md](results/METHODOLOGY.md) for measurement details and
+[infra/README.md](infra/README.md) for the AWS environment.
 
 ## Layout
 
-```
-data-movement
-├── cmd
-│   └── bench       CLI: list | run
-├── datasets        TPC-H via duckdb
-├── harness         Provisioning, sampler, parity, results
-├── infra           Terraform for the benchmark machine
-├── results         Methodology, page generator, one folder per published date
-└── sut             One adapter package per system under test
+```text
+data-movement/
+├── cmd/bench       benchmark CLI
+├── datasets        TPC-H and NYC Taxi seeders
+├── harness         timing, engines, sampling, validation, and results
+├── infra           Terraform for the remote benchmark environment
+├── provider        Testcontainers and remote endpoint providers
+├── results         methodology, raw cohorts, and page generator
+└── sut             one adapter per system under test
 ```

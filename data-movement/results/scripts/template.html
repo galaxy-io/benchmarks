@@ -182,7 +182,7 @@
           <button data-panel="sf1" aria-pressed="true">TPC-H sf1</button>
           <button data-panel="sf001" aria-pressed="false">TPC-H sf0.01</button>
         </div></dd>
-      <dt>Machine</dt><dd>AWS <a href="https://aws.amazon.com/ec2/instance-types/m7i/" target="_blank" rel="noopener">m7i.2xlarge</a> · 8 vCPU · 32 GiB · Ubuntu 24.04</dd>
+      <dt>Machine</dt><dd>AWS c7i.16xlarge · 64 vCPU · 128 GiB · Ubuntu 24.04</dd>
       <dt>Runs</dt><dd>Medians of clean, repeated runs; only the load is timed</dd>
       <dt>Correctness</dt><dd>Row counts checked on every table; wrong data gets no results</dd>
       <dt>Scoring</dt><dd><code>100 &times; (35.8s / wall)<sup>0.6</sup> &times; (22.9s / cpu)<sup>0.2</sup> &times; min(1, 8 GiB / mem)<sup>0.2</sup></code></dd>
@@ -331,7 +331,7 @@
               <th>System</th>
               <th>Container<span class="info" data-tip="The tool plus the source and sink databases.">i</span></th>
               <th class="num"><span class="hint" data-tip="CPU seconds during the load.">CPU</span></th>
-              <th class="num"><span class="hint" data-tip="Highest sample during the load (500ms cadence).">Peak memory</span></th>
+              <th class="num"><span class="hint" data-tip="Highest sample during the load (100ms cadence).">Peak memory</span></th>
               <th class="num"><span class="hint" data-tip="Bytes received during the load.">Net in</span></th>
               <th class="num"><span class="hint end" data-tip="Bytes sent during the load.">Net out</span></th>
             </tr>
@@ -457,7 +457,7 @@
               <td class="num pass mono">PASS</td>
             </tr>
             <tr>
-              <td><span class="swatch filament"></span>filament<span class="info" data-tip="filament-standalone:latest. batchMaxRows 25000, snapshotParallelism 4.">i</span></td>
+              <td><span class="swatch filament"></span>filament<span class="info" data-tip="filament-standalone:latest. batchMaxRows 25000, snapshotParallelism 32.">i</span></td>
               <td class="num mono">41.789s</td>
               <td class="num mono">207,260</td>
               <td class="num mono">40.532–44.056</td>
@@ -585,7 +585,7 @@
               <th>System</th>
               <th>Container<span class="info" data-tip="The tool plus the source and sink databases.">i</span></th>
               <th class="num"><span class="hint" data-tip="CPU seconds during the load.">CPU</span></th>
-              <th class="num"><span class="hint" data-tip="Highest sample during the load (500ms cadence).">Peak memory</span></th>
+              <th class="num"><span class="hint" data-tip="Highest sample during the load (100ms cadence).">Peak memory</span></th>
               <th class="num"><span class="hint" data-tip="Bytes received during the load.">Net in</span></th>
               <th class="num"><span class="hint end" data-tip="Bytes sent during the load.">Net out</span></th>
             </tr>
@@ -702,7 +702,7 @@
               <td class="num pass mono">PASS</td>
             </tr>
             <tr>
-              <td><span class="swatch filament"></span>filament<span class="info" data-tip="filament-standalone:latest. batchMaxRows 25000, snapshotParallelism 4.">i</span></td>
+              <td><span class="swatch filament"></span>filament<span class="info" data-tip="filament-standalone:latest. batchMaxRows 25000, snapshotParallelism 32.">i</span></td>
               <td class="num mono">1.008s</td>
               <td class="num mono">86,092</td>
               <td class="num mono">1.008–1.009</td>
