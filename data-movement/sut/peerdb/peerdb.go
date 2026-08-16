@@ -227,18 +227,31 @@ func (p *PeerDB) run(ctx context.Context, env *harness.Env, alias string, req tc
 }
 
 // searchAttribute registers MirrorName, tolerating one that already exists.
+// Temporal's auto-setup opens its port before it registers the default
+// namespace, so this retries rather than trusting the port: the first attempts
+// fail with "Namespace default is not found".
 func searchAttribute(ctx context.Context, cli tc.Container) error {
 	cmd := []string{"temporal", "operator", "search-attribute", "create",
 		"--name", "MirrorName", "--type", "Text", "--namespace", "default"}
-	code, r, err := cli.Exec(ctx, cmd, tcexec.Multiplexed())
-	if err != nil {
-		return fmt.Errorf("create search attribute: %w", err)
+	deadline := time.Now().Add(3 * time.Minute)
+	for {
+		code, r, err := cli.Exec(ctx, cmd, tcexec.Multiplexed())
+		if err != nil {
+			return fmt.Errorf("create search attribute: %w", err)
+		}
+		out, _ := io.ReadAll(r)
+		if code == 0 || strings.Contains(string(out), "already exists") {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("create search attribute exited %d:\n%s", code, out)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
-	out, _ := io.ReadAll(r)
-	if code != 0 && !strings.Contains(string(out), "already exists") {
-		return fmt.Errorf("create search attribute exited %d:\n%s", code, out)
-	}
-	return nil
 }
 
 // createPeers registers the source and destination with the server.
@@ -373,9 +386,17 @@ func (p *PeerDB) countSource(ctx context.Context) error {
 	return nil
 }
 
-// Teardown removes the stack, newest first so dependents stop before the
-// catalog they write to.
+// Teardown drops the mirror, then removes the stack newest first so dependents
+// stop before the catalog they write to. The mirror has to go first and it has
+// to go at all: it leaves a replication slot and a publication on the source,
+// and an inactive slot pins WAL there for every later run to carry.
 func (p *PeerDB) Teardown(ctx context.Context) {
+	if p.server != "" && p.mirror != "" {
+		if conn, err := pgx.Connect(ctx, p.server); err == nil {
+			_, _ = conn.Exec(ctx, "DROP MIRROR IF EXISTS "+p.mirror)
+			_ = conn.Close(ctx)
+		}
+	}
 	for i := len(p.containers) - 1; i >= 0; i-- {
 		_ = p.containers[i].Terminate(ctx)
 	}
