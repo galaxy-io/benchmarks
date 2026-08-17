@@ -56,6 +56,11 @@ func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error
 	if err != nil {
 		return 0, fmt.Errorf("load %s: %w", t.Name, err)
 	}
+	// InnoDB needs no post-load pass for readers, but fresh statistics keep
+	// the seeded table in the same state on every engine.
+	if _, err := conn.ExecContext(ctx, "ANALYZE TABLE "+name); err != nil {
+		return 0, fmt.Errorf("analyze %s: %w", t.Name, err)
+	}
 	return res.RowsAffected()
 }
 

@@ -50,5 +50,11 @@ func (postgresEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, erro
 	if err != nil {
 		return 0, fmt.Errorf("copy %s: %w", t.Name, err)
 	}
+	// A plain COPY leaves pages unhinted and not all-visible: the first reader
+	// dirties the whole table and insert autovacuum competes with it. Freeze
+	// once here so no timed window pays for it.
+	if _, err := conn.Exec(ctx, "VACUUM (FREEZE, ANALYZE) "+name); err != nil {
+		return 0, fmt.Errorf("vacuum %s: %w", t.Name, err)
+	}
 	return tag.RowsAffected(), nil
 }

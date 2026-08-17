@@ -75,6 +75,40 @@ COALESCE(sum(reuses), 0)::float8, COALESCE(sum(fsyncs), 0)::float8
 FROM pg_stat_io`,
 		"reads", "writes", "writebacks", "extends", "hits", "evictions", "reuses", "fsyncs")
 
+	// Per-table vacuum state explains a rep that competed with autovacuum on
+	// a freshly seeded table, which cumulative I/O counters alone cannot.
+	tables, err := db.QueryContext(ctx, `SELECT relname, n_live_tup::float8, n_dead_tup::float8,
+n_ins_since_vacuum::float8, vacuum_count::float8, autovacuum_count::float8,
+analyze_count::float8, autoanalyze_count::float8
+FROM pg_stat_user_tables WHERE schemaname = '`+Namespace+`' ORDER BY relname`)
+	if err != nil {
+		errs = append(errs, "tables: "+err.Error())
+	} else {
+		defer func() { _ = tables.Close() }()
+		names := []string{"liveTuples", "deadTuples", "insertsSinceVacuum",
+			"vacuums", "autovacuums", "analyzes", "autoanalyzes"}
+		for tables.Next() {
+			var rel string
+			values := make([]float64, len(names))
+			dest := make([]any, 0, len(names)+1)
+			dest = append(dest, &rel)
+			for i := range values {
+				dest = append(dest, &values[i])
+			}
+			if err := tables.Scan(dest...); err != nil {
+				errs = append(errs, "tables: "+err.Error())
+				break
+			}
+			for i, name := range names {
+				s.Counters["table."+rel+"."+name] = values[i]
+			}
+		}
+		if err := tables.Err(); err != nil {
+			errs = append(errs, "tables: "+err.Error())
+		}
+	}
+	read("vacuum", `SELECT count(*)::float8 FROM pg_stat_progress_vacuum`, "inProgress")
+
 	rows, err := db.QueryContext(ctx, `SELECT slot_name, active,
 COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn), 0)::bigint,
 COALESCE(wal_status::text, '') FROM pg_replication_slots ORDER BY slot_name`)
@@ -135,5 +169,37 @@ func snapshotMySQL(ctx context.Context, db *sql.DB, s *DatabaseSnapshot) {
 	}
 	if err := rows.Err(); err != nil {
 		s.Error = err.Error()
+	}
+}
+
+// WaitQuiescent blocks until no autovacuum worker runs on db, erroring at the
+// timeout rather than timing a rep against a busy endpoint.
+func WaitQuiescent(ctx context.Context, db *DB, timeout time.Duration) (time.Duration, error) {
+	if db.Engine != Postgres {
+		return 0, nil
+	}
+	started := time.Now()
+	h, err := db.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = h.Close() }()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		var busy int64
+		err := h.QueryRowContext(waitCtx, `SELECT count(*) FROM pg_stat_activity
+WHERE backend_type = 'autovacuum worker'`).Scan(&busy)
+		if err != nil {
+			return time.Since(started), fmt.Errorf("wait for %s to settle: %w", db.Role, err)
+		}
+		if busy == 0 {
+			return time.Since(started), nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return time.Since(started), fmt.Errorf("%s still has %d autovacuum workers after %s", db.Role, busy, timeout)
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
