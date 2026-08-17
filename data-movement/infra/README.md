@@ -30,6 +30,7 @@ a same-engine route.
 | `rds_allocated_gb` | `1500` | RDS gp3 storage size |
 | `rds_iops` | `51200` | RDS provisioned IOPS |
 | `rds_throughput` | `4000` | RDS storage throughput in MB/s |
+| `rds_monitoring_interval` | `1` | Enhanced Monitoring interval; `0` disables it |
 | `remote_iceberg` | `false` | Provision the S3 warehouse, instance role, and gateway endpoint |
 | `warehouse_expire_days` | `7` | Days before a warehouse object expires; must outlast a sweep |
 
@@ -67,8 +68,9 @@ terraform output -raw bench_env
 ```
 
 The block contains no AWS credentials. Clients obtain refreshable temporary
-credentials from the host's instance role. Do not inject temporary credentials
-for a long sweep.
+credentials from the host's instance role. The role is scoped to the warehouse
+bucket and this stack's RDS instances, and also permits read-only collection of
+CloudWatch metrics. Do not inject temporary credentials for a long sweep.
 
 ## Run from the host
 
@@ -96,8 +98,13 @@ source ~/.bench.env
 export BENCH_MACHINE='c7i.16xlarge'
 
 tmux new -s bench \
-  'go run ./cmd/bench run -topology remote -sut all -route all -reps 5 -sf 1 -timeout 24h'
+  'go run ./cmd/bench run -topology remote -sut all -route all -reuse-seed -cold-rds -reps 5 -sf 1 -timeout 24h'
 ```
+
+`-cold-rds` reboots the SQL endpoints concurrently before each repetition,
+waits for SQL recovery, and leaves a 30-second quiet period after SUT setup.
+`-rds-metrics` defaults on and embeds CloudWatch points plus database-native
+before/after snapshots when the Terraform RDS identifiers are present.
 
 `-route all` needs every end of every route present, so the run stops before
 provisioning if a variable is missing, naming the one it wanted.

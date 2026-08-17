@@ -9,18 +9,22 @@ are for development and are never mixed into a remote result cohort.
 A benchmark is one scenario, route, dataset, and SUT. Each repetition:
 
 1. Creates an isolated Docker network for the SUT.
-2. Resets remote SQL benchmark namespaces or creates fresh Testcontainers
-   databases in local mode. A remote Iceberg sink receives a fresh S3 prefix and
-   REST catalog instead.
-3. Seeds the source with the requested dataset.
-4. Starts and configures the SUT. Image pulls, dependency installation,
+2. Resets the remote sink or creates fresh Testcontainers databases in local
+   mode. A remote Iceberg sink receives a fresh S3 prefix and REST catalog.
+3. Reuses the cohort's immutable remote source seed and its saved row-count
+   manifest. Local runs and remote runs without `-reuse-seed` seed per rep.
+4. With `-cold-rds`, reboots the remote SQL endpoints concurrently and waits for
+   RDS availability, SQL connectivity, and the configured settling period.
+5. Starts and configures the SUT. Image pulls, dependency installation,
    discovery, connector registration, and container startup are setup and are
    not timed.
-5. Starts the prepared transfer and measures until the adapter's completion
+6. Captures database health, starts the prepared transfer, and measures until
+   the adapter's completion
    condition is met. Most adapters wait for a process or job to finish;
    Debezium waits for destination row counts to reach the source counts.
    Process initialization after the start trigger is timed.
-6. Verifies the destination and tears down run-owned resources.
+7. Captures post-run health, tears down the SUT, captures replication-slot state,
+   and verifies the destination against the seed manifest.
 
 The configured timeout applies independently to each repetition and covers
 provisioning, seeding, setup, transfer, and validation. Some component startup
@@ -45,9 +49,12 @@ value is its highest sample during that window. The report sums these
 per-container peaks for a SUT; the peaks may occur at different times. Sampling
 captures image tags and immutable Docker image IDs.
 
-On remote runs these metrics describe the SUT containers only. RDS and S3
-resource use is outside Docker and is intentionally excluded rather than being
-presented as a misleading total. Endpoint type and labels remain in the result.
+On remote runs Docker metrics describe the SUT containers only. RDS resource
+use is reported separately through database counter snapshots and CloudWatch,
+including CPU, memory, IOPS, throughput, latency, disk queue, network, storage,
+and PostgreSQL replication-slot lag. Terraform also publishes one-second OS
+metrics through RDS Enhanced Monitoring. S3 resource use remains outside the
+Docker totals.
 
 ## Configuration and tuning
 

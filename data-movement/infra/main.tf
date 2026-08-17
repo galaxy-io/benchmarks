@@ -81,6 +81,10 @@ locals {
       aws_name = replace(end, "_", "-")
     })
   }
+
+  # Remote RDS control and remote Iceberg both authenticate through the host's
+  # instance profile. Neither path uses long-lived AWS credentials.
+  bench_identity = length(var.remote_rds) > 0 || var.remote_iceberg
 }
 
 resource "aws_security_group" "bench" {
@@ -154,6 +158,27 @@ resource "aws_db_parameter_group" "rds" {
   }
 }
 
+# RDS assumes this service role to publish one-second OS metrics to the
+# RDSOSMetrics CloudWatch Logs group.
+resource "aws_iam_role" "rds_monitoring" {
+  count       = length(local.rds) > 0 && var.rds_monitoring_interval > 0 ? 1 : 0
+  name_prefix = "bench-rds-monitoring-"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "monitoring.rds.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  count      = length(aws_iam_role.rds_monitoring)
+  role       = aws_iam_role.rds_monitoring[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 resource "aws_db_instance" "rds" {
   for_each          = local.rds
   identifier_prefix = "bench-${each.value.aws_name}-"
@@ -175,6 +200,9 @@ resource "aws_db_instance" "rds" {
   vpc_security_group_ids = [aws_security_group.rds[0].id]
   parameter_group_name   = aws_db_parameter_group.rds[each.key].name
   publicly_accessible    = false
+
+  monitoring_interval = var.rds_monitoring_interval
+  monitoring_role_arn = var.rds_monitoring_interval > 0 ? aws_iam_role.rds_monitoring[0].arn : null
 
   backup_retention_period = each.value.backup_days
   multi_az                = false
@@ -321,10 +349,10 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids   = [local.bench_route_table_id]
 }
 
-# The bench host's identity. Scoped to the one bucket: the benchmark has no
-# reason to reach anything else in the account.
+# The bench host's identity. Attached policies scope mutations to this stack's
+# warehouse bucket and RDS instances; CloudWatch access is read-only.
 resource "aws_iam_role" "bench" {
-  count       = var.remote_iceberg ? 1 : 0
+  count       = local.bench_identity ? 1 : 0
   name_prefix = "bench-"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -333,6 +361,36 @@ resource "aws_iam_role" "bench" {
       Action    = "sts:AssumeRole"
       Principal = { Service = "ec2.amazonaws.com" }
     }]
+  })
+}
+
+# The benchmark host can reboot only this stack's RDS instances. Describe and
+# CloudWatch read APIs do not support useful resource-level scoping.
+resource "aws_iam_role_policy" "rds_control" {
+  count       = length(local.rds) > 0 ? 1 : 0
+  name_prefix = "rds-control-"
+  role        = aws_iam_role.bench[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["rds:RebootDBInstance"]
+        Resource = [for db in aws_db_instance.rds : db.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "logs:DescribeLogStreams",
+          "logs:FilterLogEvents",
+          "logs:GetLogEvents",
+        ]
+        Resource = "*"
+      },
+    ]
   })
 }
 
@@ -364,7 +422,7 @@ resource "aws_iam_role_policy" "warehouse" {
 }
 
 resource "aws_iam_instance_profile" "bench" {
-  count       = var.remote_iceberg ? 1 : 0
+  count       = local.bench_identity ? 1 : 0
   name_prefix = "bench-"
   role        = aws_iam_role.bench[0].name
 }
@@ -375,7 +433,7 @@ resource "aws_instance" "bench" {
   key_name               = var.key_name
   subnet_id              = data.aws_subnet.bench.id
   vpc_security_group_ids = [aws_security_group.bench.id]
-  iam_instance_profile   = var.remote_iceberg ? aws_iam_instance_profile.bench[0].name : null
+  iam_instance_profile   = local.bench_identity ? aws_iam_instance_profile.bench[0].name : null
   user_data              = file("${path.module}/scripts/user-data.sh")
 
   # Require IMDSv2 on every host. A hop limit of 2 lets benchmark containers

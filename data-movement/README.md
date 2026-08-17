@@ -33,16 +33,20 @@ pg → pg       pg → mysql       pg → iceberg
 mysql → pg    mysql → mysql    mysql → iceberg
 ```
 
-Every repetition starts from an empty benchmark namespace and seeds the same
-source tables. Setup finishes before the timer starts. The timed window begins
-when the harness starts the prepared transfer and includes any process
-initialization that follows. A result is accepted only when every destination
-table has the source row count.
+Remote publication cohorts use one immutable source seed, a fresh sink per
+repetition, and `-cold-rds` to reboot the SQL endpoints before every timed run.
+The seed's row-count manifest is passed to adapters, so setup and validation do
+not scan the source. Setup and the configured post-reboot settling period finish
+before the timer starts. The timed window begins when the harness starts the
+prepared transfer and includes any process initialization that follows. A
+result is accepted only when every destination table has the manifest row count.
 
 The harness records timing, effective SUT configuration, endpoint topology,
 host details, Docker image IDs, and per-container CPU, memory, and network use.
-For remote runs, Docker metrics cover the SUT containers; database-side metrics
-are intentionally not presented as part of SUT resource use.
+When Terraform-provided RDS identifiers are present it also records database
+counter snapshots before, after, and after teardown, plus raw CloudWatch points
+around the timed window. Terraform enables one-second RDS Enhanced Monitoring
+in CloudWatch Logs for deeper investigation.
 
 ## Running remotely
 

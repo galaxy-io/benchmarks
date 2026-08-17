@@ -34,6 +34,9 @@ type ProvisionSpec struct {
 	Role   string
 	RunID  string
 	Net    *tc.DockerNetwork
+	// Reset requests that a persistent provider empty its benchmark namespace.
+	// Container providers are already fresh and ignore it.
+	Reset bool
 }
 
 // Provider hands back an addressed database.
@@ -47,11 +50,14 @@ type Env struct {
 	Net    *tc.DockerNetwork
 	Source *DB
 	Sink   *DB
+	// Expected carries the seed manifest into adapters so setup never has to
+	// scan the source merely to discover row counts.
+	Expected map[string]int64
 }
 
 // NewEnv starts the network and provisions both databases for a route. The SUT
 // containers use this network even when one or both databases are remote.
-func NewEnv(ctx context.Context, route, runID string, source, sink Provider) (*Env, error) {
+func NewEnv(ctx context.Context, route, runID string, source, sink Provider, resetSource bool) (*Env, error) {
 	srcEngine, sinkEngine, err := ParseRoute(route)
 	if err != nil {
 		return nil, err
@@ -63,14 +69,14 @@ func NewEnv(ctx context.Context, route, runID string, source, sink Provider) (*E
 	env := &Env{RunID: runID, Net: net}
 
 	env.Source, err = source.Provision(ctx, ProvisionSpec{
-		Engine: srcEngine, Role: "source", RunID: runID, Net: net,
+		Engine: srcEngine, Role: "source", RunID: runID, Net: net, Reset: resetSource,
 	})
 	if err != nil {
 		env.terminateAfterProvisionFailure()
 		return nil, fmt.Errorf("source: %w", err)
 	}
 	env.Sink, err = sink.Provision(ctx, ProvisionSpec{
-		Engine: sinkEngine, Role: "sink", RunID: runID, Net: net,
+		Engine: sinkEngine, Role: "sink", RunID: runID, Net: net, Reset: true,
 	})
 	if err != nil {
 		env.terminateAfterProvisionFailure()

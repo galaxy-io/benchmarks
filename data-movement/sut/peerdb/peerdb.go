@@ -85,14 +85,20 @@ func (p *PeerDB) Config() map[string]any { return Options }
 // on both ends and the one its own benchmarks report.
 func (p *PeerDB) Routes() []string { return []string{"pg-pg"} }
 
-// Setup starts the stack, registers both peers, and records the source counts.
+// Setup starts the stack, registers both peers, and accepts the source counts
+// from the seed manifest so preparation never scans the source.
 func (p *PeerDB) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	p.env = env
 	p.tables = tables
 	p.mirror = "bench_" + strings.ReplaceAll(env.RunID, "-", "_")
 
-	if err := p.countSource(ctx); err != nil {
-		return err
+	p.expected = make(map[string]int64, len(tables))
+	for _, t := range tables {
+		n, ok := env.Expected[t]
+		if !ok {
+			return fmt.Errorf("seed manifest has no row count for %s", t)
+		}
+		p.expected[t] = n
 	}
 	// PeerDB creates the destination tables but not the schema holding them.
 	sink, err := env.Sink.Open()
@@ -365,25 +371,6 @@ func (p *PeerDB) advance(ctx context.Context, sink *sql.DB, remaining []string) 
 		remaining = remaining[1:]
 	}
 	return remaining, nil
-}
-
-// countSource records the row counts convergence is measured against.
-func (p *PeerDB) countSource(ctx context.Context) error {
-	src, err := p.env.Source.Open()
-	if err != nil {
-		return fmt.Errorf("open source: %w", err)
-	}
-	defer func() { _ = src.Close() }()
-	p.expected = map[string]int64{}
-	for _, t := range p.tables {
-		var n int64
-		q := fmt.Sprintf("SELECT count(*) FROM %s.%s", harness.Namespace, t)
-		if err := src.QueryRowContext(ctx, q).Scan(&n); err != nil {
-			return fmt.Errorf("count source %s: %w", t, err)
-		}
-		p.expected[t] = n
-	}
-	return nil
 }
 
 // Teardown drops the mirror, then removes the stack newest first so dependents

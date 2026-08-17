@@ -25,9 +25,12 @@ func (r Remote) Provision(ctx context.Context, spec harness.ProvisionSpec) (*har
 		InternalDSN: r.DSN,
 		Close:       func(context.Context) error { return nil },
 	}
-	// Match the fresh-container lifecycle for both persistent roles.
-	if err := reset(ctx, db); err != nil {
-		return nil, err
+	if spec.Reset {
+		// Sinks reset every repetition. Reusable sources outlive an individual
+		// environment and are removed explicitly when the cohort finishes.
+		if err := reset(ctx, db); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }

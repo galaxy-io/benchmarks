@@ -18,9 +18,10 @@ locals {
   # RDS key is already role_engine, so it names its own variable.
   bench_env = concat(
     [for end, dsn in local.rds_dsn : "export BENCH_${upper(end)}_DSN='${dsn}'"],
+    [for end, db in aws_db_instance.rds : "export BENCH_${upper(end)}_RDS_ID='${db.identifier}'"],
+    local.bench_identity ? ["export AWS_REGION='${var.region}'"] : [],
     local.warehouse == "" ? [] : [
       "export BENCH_SINK_ICEBERG_DSN='s3://${local.warehouse}'",
-      "export AWS_REGION='${var.region}'",
     ],
   )
 }
