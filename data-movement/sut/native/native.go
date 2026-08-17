@@ -1,8 +1,6 @@
-// Package native runs the naive baseline: the engine's own dump client piped
-// into its load client, one single-threaded stream, schema and data, nothing
-// clever. It is the floor every tool must beat and the planned reference for
-// future index editions. Cross-engine routes have no native pipeline, so the
-// baseline only runs same-engine.
+// Package native runs each engine's dump client piped into its load client.
+// The pipeline uses one stream for schema and data and supports same-engine
+// routes only.
 package native
 
 import (
@@ -12,10 +10,9 @@ import (
 	"io"
 	"net/url"
 	"strings"
-	"time"
 
 	tc "github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	tcexec "github.com/testcontainers/testcontainers-go/exec"
 
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
@@ -24,13 +21,14 @@ const pgScript = `set -e
 pg_dump --no-owner --no-privileges "$SOURCE_DSN" | psql -q -v ON_ERROR_STOP=1 "$SINK_DSN"`
 
 const mysqlScript = `set -e
-mysqldump --host "$SOURCE_HOST" --user "$DB_USER" --single-transaction "$DB_NAME" |
-mysql --host "$SINK_HOST" --user "$DB_USER" "$DB_NAME"`
+MYSQL_PWD="$SOURCE_PASSWORD" mysqldump --host "$SOURCE_HOST" --port "$SOURCE_PORT" --user "$SOURCE_USER" $SOURCE_SSL_ARG --single-transaction "$SOURCE_DB" |
+MYSQL_PWD="$SINK_PASSWORD" mysql --host "$SINK_HOST" --port "$SINK_PORT" --user "$SINK_USER" $SINK_SSL_ARG "$SINK_DB"`
 
 // Native runs the dump-and-load pipeline in the engine's own image.
 type Native struct {
 	route     string
 	container tc.Container
+	script    string
 }
 
 // New returns the baseline for a route.
@@ -64,7 +62,8 @@ func (n *Native) Config() map[string]any {
 // Routes lists the same-engine routes the baseline supports.
 func (n *Native) Routes() []string { return []string{"pg-pg", "mysql-mysql"} }
 
-// Setup creates the container, unstarted, so Run times only the pipeline.
+// Setup starts an idle container and prepares the pipeline command. Run starts
+// the command inside that container.
 func (n *Native) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	if len(tables) == 0 {
 		return errors.New("no tables to copy")
@@ -87,14 +86,22 @@ func (n *Native) Setup(ctx context.Context, env *harness.Env, tables []string) e
 		if err != nil {
 			return err
 		}
-		pass, _ := src.User.Password()
+		srcPass, _ := src.User.Password()
+		dstPass, _ := dst.User.Password()
 		script = mysqlScript
 		cenv = map[string]string{
-			"SOURCE_HOST": src.Hostname(),
-			"SINK_HOST":   dst.Hostname(),
-			"DB_USER":     src.User.Username(),
-			"DB_NAME":     strings.TrimPrefix(src.Path, "/"),
-			"MYSQL_PWD":   pass,
+			"SOURCE_HOST":     src.Hostname(),
+			"SOURCE_PORT":     portOr(src, "3306"),
+			"SOURCE_USER":     src.User.Username(),
+			"SOURCE_PASSWORD": srcPass,
+			"SOURCE_DB":       strings.TrimPrefix(src.Path, "/"),
+			"SOURCE_SSL_ARG":  mysqlSSLArg(src),
+			"SINK_HOST":       dst.Hostname(),
+			"SINK_PORT":       portOr(dst, "3306"),
+			"SINK_USER":       dst.User.Username(),
+			"SINK_PASSWORD":   dstPass,
+			"SINK_DB":         strings.TrimPrefix(dst.Path, "/"),
+			"SINK_SSL_ARG":    mysqlSSLArg(dst),
 		}
 	default:
 		return fmt.Errorf("native does not run route %q", n.route)
@@ -102,19 +109,40 @@ func (n *Native) Setup(ctx context.Context, env *harness.Env, tables []string) e
 	container, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
 			Image:      n.Image(),
-			Cmd:        []string{"sh", "-c", script},
+			Entrypoint: []string{"sh", "-c"},
+			Cmd:        []string{"sleep infinity"},
 			Env:        cenv,
 			Labels:     map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "native"},
 			Networks:   []string{env.Net.Name},
-			WaitingFor: wait.ForExit().WithExitTimeout(30 * time.Minute),
 		},
-		Started: false,
+		Started: true,
 	})
 	if err != nil {
 		return fmt.Errorf("native container: %w", err)
 	}
 	n.container = container
+	n.script = script
 	return nil
+}
+
+func portOr(u *url.URL, fallback string) string {
+	if u.Port() != "" {
+		return u.Port()
+	}
+	return fallback
+}
+
+func mysqlSSLArg(u *url.URL) string {
+	switch u.Query().Get("tls") {
+	case "", "false":
+		return "--ssl-mode=DISABLED"
+	case "true":
+		return "--ssl-mode=VERIFY_IDENTITY"
+	case "preferred":
+		return "--ssl-mode=PREFERRED"
+	default:
+		return "--ssl-mode=REQUIRED"
+	}
 }
 
 // Teardown removes the container.
@@ -124,31 +152,23 @@ func (n *Native) Teardown(ctx context.Context) {
 	}
 }
 
-// Run starts the pipeline and blocks until it exits, erroring on a non-zero code.
+// Run executes only the prepared pipeline and observes the caller's timeout.
 func (n *Native) Run(ctx context.Context) error {
-	if err := n.container.Start(ctx); err != nil {
-		return fmt.Errorf("native start: %w", err)
-	}
-	state, err := n.container.State(ctx)
+	code, r, err := n.container.Exec(ctx, []string{"sh", "-c", n.script}, tcexec.Multiplexed())
 	if err != nil {
-		return err
+		return fmt.Errorf("native run: %w", err)
 	}
-	if state.ExitCode != 0 {
-		return fmt.Errorf("native exited %d:\n%s", state.ExitCode, n.logs(ctx))
+	out, readErr := io.ReadAll(r)
+	if readErr != nil {
+		return fmt.Errorf("native output: %w", readErr)
+	}
+	if code != 0 {
+		return fmt.Errorf("native exited %d:\n%s", code, tail(out))
 	}
 	return nil
 }
 
-func (n *Native) logs(ctx context.Context) string {
-	r, err := n.container.Logs(ctx)
-	if err != nil {
-		return "(logs unavailable)"
-	}
-	defer func() { _ = r.Close() }()
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return "(logs unavailable)"
-	}
+func tail(b []byte) string {
 	if len(b) > 4000 {
 		b = b[len(b)-4000:]
 	}

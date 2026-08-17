@@ -1,102 +1,117 @@
 # Methodology
 
-How these benchmarks are run and measured. The harness, the adapters, and
-the raw results live in this repository. Every number on the results page
-traces back to a JSON file beside it.
+Every published number traces back to a raw JSON result produced by the same
+harness. Remote databases are the primary topology. Local Testcontainers runs
+are for development and are never mixed into a remote result cohort.
 
-## What a benchmark is
+## Repetitions and timing
 
-One benchmark is a scenario, a route, and a dataset: for example, a full
-load of TPC-H sf1 from Postgres to Postgres. Every system under test runs
-the same combination on the same machine.
+A benchmark is one scenario, route, dataset, and SUT. Each repetition:
 
-Each run repeats several times. A repetition:
+1. Creates an isolated Docker network for the SUT.
+2. Resets the remote sink or creates fresh Testcontainers databases in local
+   mode. A remote Iceberg sink receives a fresh S3 prefix and REST catalog.
+3. Reuses the cohort's immutable remote source seed and its saved row-count
+   manifest. Local runs and remote runs without `-reuse-seed` seed per rep.
+4. With `-cold-rds`, reboots the remote SQL endpoints concurrently and waits for
+   RDS availability, SQL connectivity, and the configured settling period.
+5. Starts and configures the SUT. Image pulls, dependency installation,
+   discovery, connector registration, and container startup are setup and are
+   not timed.
+6. Captures database health, starts the prepared transfer, and measures until
+   the adapter's completion
+   condition is met. Most adapters wait for a process or job to finish;
+   Debezium waits for destination row counts to reach the source counts.
+   Process initialization after the start trigger is timed.
+7. Captures post-run health, tears down the SUT, captures replication-slot state,
+   and verifies the destination against the seed manifest.
 
-1. Starts a fresh Docker network, source database, and sink database.
-2. Seeds the source with the dataset.
-3. Runs the system's setup: container start, installs, pipeline
-   registration. None of this is timed.
-4. Runs the load. The clock covers only this window.
-5. Checks row counts and tears everything down.
+The configured timeout applies independently to each repetition and covers
+provisioning, seeding, setup, transfer, and validation. Some component startup
+and cleanup operations have shorter deadlines. Results report median wall time
+and rows per second, plus the fastest and slowest repetition. Multi-SUT sweeps
+rotate their starting SUT each repetition to distribute run-order effects.
 
-We report the median across repetitions, along with the fastest and slowest
-run.
+## Validation
 
-## Measurement
+After the timed run, the harness compares source and destination row counts for
+each table. It does not compare row contents.
 
-While the clock runs, a sampler reads Docker stats for every container in
-the run (the tool, the source, and the sink) every 500ms. From this we keep
-CPU seconds, peak memory, and network bytes per container. Peaks are
-sampled, so very short spikes can be missed.
+If any table differs, that SUT and route fail and no result JSON is written for
+them. Validation may scan table indexes or data to compute `COUNT(*)`, but it
+does not sort or transfer row contents.
 
-## Correctness
+## Resource measurement
 
-A repetition passes parity if every table has the same row count in the
-sink as in the source. Parity is a gate: a system that fails it gets no
-results for that run. Correctness cannot be traded for speed. We plan to
-replace row counts with content checksums, so corrupted rows cannot slip
-through.
+The harness samples labeled Docker containers every 100 ms. CPU and network
+counters are reported as deltas over the timed window. Each container's memory
+value is its highest sample during that window. The report sums these
+per-container peaks for a SUT; the peaks may occur at different times. Sampling
+captures image tags and immutable Docker image IDs.
 
-## Configuration policy
+On remote runs Docker metrics describe the SUT containers only. RDS resource
+use is reported separately through database counter snapshots and CloudWatch,
+including CPU, memory, IOPS, throughput, latency, disk queue, network, storage,
+and PostgreSQL replication-slot lag. Terraform also publishes one-second OS
+metrics through RDS Enhanced Monitoring. S3 resource use remains outside the
+Docker totals.
 
-Every system runs the strongest configuration its vendor documents,
-preferring the vendor's own published benchmark setup when one exists. The
-exact image and settings are recorded in every result file and shown on the
-results page. We do not tune competitors beyond their documentation, and we
-do not detune them either.
+## Configuration and tuning
 
-The infrastructure the systems share is configured once and applied to every
-system identically:
+Each adapter records its extraction, write, batch, worker, and completion
+settings where applicable. Discovery and other preparation run before the timed
+window. Effective settings are stored in every result file.
 
-- The MySQL container runs with an 8 GiB InnoDB buffer pool and a 2 GiB
-  redo log, sized as a practitioner would for a dedicated 32 GiB machine.
-  Stock defaults (a 128 MB pool) punish tools with non-sequential write
-  patterns and test a database nobody deploys.
-- The Postgres containers get the matching treatment: 8 GiB shared buffers,
-  an 8 GiB WAL ceiling, spread checkpoints, and working memory sized for the
-  machine. Durability is never touched: fsync, synchronous commit, full page
-  writes, and autovacuum all stay at stock. A sink that can lose data is not
-  a benchmark target.
-- The databases and the tool share one machine on one Docker network. This
-  removes network variance and is generous to chatty tools: a per-row round
-  trip costs nearly nothing on localhost. Adding real network distance would
-  widen the gaps between systems, not narrow them.
+Reference parallelism is SUT-specific: 32 workers for Filament, OLake,
+Debezium, and Ingestr, and 16 normalize/load workers for dlt. Debezium uses
+32,768-row source and sink batches with a four-batch queue. Adapter-specific
+batch and memory overrides are available for calibration. Tuning must be chosen
+before the published cohort, applied equally to every repetition for that SUT,
+and retained even when the result is slower.
+Row-count validation and database durability settings are not changed during
+tuning.
 
-One setting is specific to a single system. Airbyte's connector containers
-run with a 4 GiB memory limit each, mirroring the limit the Airbyte platform
-itself places on connector pods. Without one, the connector JVMs size their
-heaps from the host and destabilize the machine.
+Airbyte connector containers default to a 16 GiB limit each. The limit prevents
+the JVM from sizing itself from the entire host. The effective limit is recorded
+with the result.
 
-## Baselines
+## Topology and hardware
 
-Each scenario carries a naive baseline, run by the same harness as
-everything else. For full load it is `native`: the engine's own dump client
-piped into its load client, one stream, nothing clever. It is the floor a
-tool has to beat. Cross-engine routes have no native pipeline, so the
-baseline runs only on same-engine routes.
+The reference SUT host is an AWS `c7i.16xlarge` in `us-east-2`: 64 vCPU,
+128 GiB of memory, Ubuntu 24.04, and a 750 GB gp3 volume configured for 16,000
+IOPS and 1,000 MB/s. Each remote database role uses a separate RDS instance;
+the default is `db.m6i.8xlarge` with 32 vCPU, 128 GiB of memory, and provisioned
+gp3 storage. All endpoints are placed in one availability zone.
 
-## Hardware
+Two remote SQL databases must use distinct host/port endpoints. DSN credentials,
+database names, query parameters, hostname case, and default ports do not bypass
+that check. An Iceberg sink is identified by its S3 warehouse instead. Remote SQL
+namespaces are reset before each repetition; remote Iceberg repetitions use
+separate warehouse prefixes. Both give discovery-based tools a clean destination
+without including database startup time in the measurement.
 
-All published numbers come from one pinned machine: an AWS m7i.2xlarge
-(8 vCPU Intel Sapphire Rapids, 32 GiB) in us-east-2, running Ubuntu 24.04
-on a 100 GB gp3 volume. Source, sink, and tool containers share one Docker
-network on that host. Numbers from any other machine are development noise
-and are never compared against it.
+Local Postgres and MySQL containers receive benchmark-sized buffer, WAL/redo,
+and checkpoint settings while retaining normal durability. Local numbers are a
+different topology and must not be compared directly with remote results.
 
-## Results layout
+## Provenance and result layout
 
-Results are published as one directory per date:
+Each result records the SUT image description, immutable sampled image IDs,
+effective configuration, endpoint providers and labels, host hardware, harness
+commit and dirty state, timings, resource samples, and row-count validation.
 
-```
+```text
 results/
   METHODOLOGY.md
-  scripts/                     page generator and template
+  scripts/
   {date}/
-    index.html                 rendered results page
-    {provider}/
-      {scenario}-{route}-{dataset}.json
+    {cohort}/
+      index.html
+      {sut}/
+        {scenario}-{route}-{dataset}-{topology}.json
 ```
 
-Each JSON file is the complete record of one benchmark invocation: image,
-configuration, per-repetition timings, resource samples, parity counts, and
-the host's operating system, architecture, and CPU count.
+The page generator rejects mixed cohorts, topologies, machines, harness
+revisions, verification modes, row totals, and repetition counts. Endpoint
+metadata must match within a route; different routes may use different engines
+and endpoints on the same page.

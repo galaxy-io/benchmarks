@@ -6,11 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
-	tc "github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const MySQLImage = "mysql:8.4"
@@ -19,49 +16,6 @@ type mysqlEngine struct{}
 
 // Name identifies the engine.
 func (mysqlEngine) Name() string { return "mysql" }
-
-// Start runs a mysql container on net; the alias doubles as the sampler role.
-// The bench user gets global grants so tools can create their own working
-// databases, and local_infile is on for LOAD DATA seeding.
-func (e mysqlEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error) {
-	grants := "GRANT ALL PRIVILEGES ON *.* TO 'bench'@'%'; FLUSH PRIVILEGES;\n"
-	req := tc.ContainerRequest{
-		Image: MySQLImage,
-		// Sized for the benchmark machine; stock 128MB punishes non-sequential writers.
-		Cmd:          []string{"--local-infile=ON", "--innodb-buffer-pool-size=8G", "--innodb-redo-log-capacity=2G"},
-		ExposedPorts: []string{"3306/tcp"},
-		Env: map[string]string{
-			"MYSQL_ROOT_PASSWORD": "bench",
-			"MYSQL_USER":          "bench",
-			"MYSQL_PASSWORD":      "bench",
-			"MYSQL_DATABASE":      "bench",
-		},
-		Files: []tc.ContainerFile{{
-			Reader:            strings.NewReader(grants),
-			ContainerFilePath: "/docker-entrypoint-initdb.d/grants.sql",
-			FileMode:          0o644,
-		}},
-		Labels:         map[string]string{LabelRun: runID, LabelRole: alias},
-		Networks:       []string{net.Name},
-		NetworkAliases: map[string][]string{net.Name: {alias}},
-		WaitingFor: wait.ForLog("port: 3306  MySQL Community Server").
-			WithStartupTimeout(120 * time.Second),
-	}
-	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{ContainerRequest: req, Started: true})
-	if err != nil {
-		return nil, err
-	}
-	host, port, err := hostPort(ctx, c, "3306")
-	if err != nil {
-		return nil, err
-	}
-	return &DB{
-		Container:   c,
-		Engine:      e,
-		DSN:         fmt.Sprintf("mysql://bench:bench@%s:%s/bench", host, port),
-		InternalDSN: fmt.Sprintf("mysql://bench:bench@%s:3306/bench", alias),
-	}, nil
-}
 
 // Open opens a database/sql handle to db from the host.
 func (mysqlEngine) Open(db *DB) (*sql.DB, error) {
@@ -77,8 +31,8 @@ func (mysqlEngine) Count(ctx context.Context, db *DB, table string) (int64, erro
 	return sqlCount(ctx, db, table)
 }
 
-// Load creates t in the bench database and loads its csv with
-// LOAD DATA LOCAL INFILE, the fastest client-side path mysql offers.
+// Load creates t in the bench database and loads its CSV with
+// LOAD DATA LOCAL INFILE.
 func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error) {
 	conn, err := e.Open(db)
 	if err != nil {
@@ -117,5 +71,18 @@ func MySQLDSN(dsn string) (string, error) {
 	cfg.Net = "tcp"
 	cfg.Addr = u.Host
 	cfg.DBName = strings.TrimPrefix(u.Path, "/")
+	query := u.Query()
+	if tls := query.Get("tls"); tls != "" {
+		cfg.TLSConfig = tls
+		query.Del("tls")
+	}
+	if len(query) > 0 {
+		cfg.Params = make(map[string]string, len(query))
+		for key, values := range query {
+			if len(values) > 0 {
+				cfg.Params[key] = values[len(values)-1]
+			}
+		}
+	}
 	return cfg.FormatDSN(), nil
 }

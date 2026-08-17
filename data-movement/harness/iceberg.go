@@ -8,19 +8,38 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
-
-	tc "github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
 	MinIOImage          = "minio/minio:latest"
 	IcebergCatalogImage = "apache/iceberg-rest-fixture:latest"
 
-	icebergBucket = "warehouse"
-	icebergKey    = "bench"
-	icebergSecret = "benchbench"
+	IcebergBucket = "warehouse"
+	IcebergKey    = "bench"
+	IcebergSecret = "benchbench"
+	IcebergRegion = "us-east-1"
+)
+
+// Props keys an Iceberg sink carries beyond its DSN. A provider fills these in
+// and the SUTs read them, so the names are a contract between the two.
+const (
+	PropWarehouse  = "warehouse"
+	PropS3Endpoint = "s3.endpoint"
+	PropS3Key      = "s3.access-key-id"
+	PropS3Secret   = "s3.secret-access-key"
+	PropS3Token    = "s3.session-token"
+	PropS3Region   = "s3.region"
+
+	// PropS3HostEndpoint is the object store as the host sees it, which is
+	// where Count attaches from; PropS3Endpoint is how the SUTs reach it. Both
+	// are empty for S3 itself, which every client already knows how to find.
+	PropS3HostEndpoint = "s3.host-endpoint"
+
+	// MinIO answers plaintext on a path-style URL and S3 does neither, so the
+	// provider that handed the store over says which, rather than each writer
+	// assuming. Values are "true" and "false".
+	PropS3UseSSL    = "s3.use-ssl"
+	PropS3PathStyle = "s3.path-style"
 )
 
 type icebergEngine struct{}
@@ -28,88 +47,10 @@ type icebergEngine struct{}
 // Name identifies the engine.
 func (icebergEngine) Name() string { return "iceberg" }
 
-// Start runs MinIO and an Iceberg REST catalog on net; the catalog is the main
-// container and MinIO rides along in Aux. The internal DSN carries the catalog
-// endpoint and the S3 settings a writer needs, in one URI.
-func (e icebergEngine) Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error) {
-	minioAlias := alias + "-minio"
-	minio, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
-		ContainerRequest: tc.ContainerRequest{
-			Image:        MinIOImage,
-			Cmd:          []string{"server", "/data"},
-			ExposedPorts: []string{"9000/tcp"},
-			Env: map[string]string{
-				"MINIO_ROOT_USER":     icebergKey,
-				"MINIO_ROOT_PASSWORD": icebergSecret,
-			},
-			Labels:         map[string]string{LabelRun: runID, LabelRole: minioAlias},
-			Networks:       []string{net.Name},
-			NetworkAliases: map[string][]string{net.Name: {minioAlias}},
-			WaitingFor:     wait.ForListeningPort("9000/tcp").WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("minio: %w", err)
-	}
-	// MinIO's filesystem backend surfaces a top-level directory as a bucket.
-	if code, _, err := minio.Exec(ctx, []string{"mkdir", "-p", "/data/" + icebergBucket}); err != nil || code != 0 {
-		return nil, fmt.Errorf("create bucket (exit %d): %w", code, err)
-	}
-
-	catalog, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
-		ContainerRequest: tc.ContainerRequest{
-			Image:        IcebergCatalogImage,
-			ExposedPorts: []string{"8181/tcp"},
-			Env: map[string]string{
-				"AWS_ACCESS_KEY_ID":              icebergKey,
-				"AWS_SECRET_ACCESS_KEY":          icebergSecret,
-				"AWS_REGION":                     "us-east-1",
-				"CATALOG_WAREHOUSE":              "s3://" + icebergBucket + "/",
-				"CATALOG_IO__IMPL":               "org.apache.iceberg.aws.s3.S3FileIO",
-				"CATALOG_S3_ENDPOINT":            "http://" + minioAlias + ":9000",
-				"CATALOG_S3_PATH__STYLE__ACCESS": "true",
-			},
-			Labels:         map[string]string{LabelRun: runID, LabelRole: alias},
-			Networks:       []string{net.Name},
-			NetworkAliases: map[string][]string{net.Name: {alias}},
-			WaitingFor:     wait.ForListeningPort("8181/tcp").WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
-	})
-	if err != nil {
-		_ = minio.Terminate(ctx)
-		return nil, fmt.Errorf("iceberg catalog: %w", err)
-	}
-
-	host, port, err := hostPort(ctx, catalog, "8181")
-	if err != nil {
-		return nil, err
-	}
-	// Pre-create the bench namespace, mirroring how the sql engines pre-create
-	// their bench database; the fixture's sqlite backend also races on
-	// concurrent namespace creation from parallel writers.
-	if err := createNamespace(ctx, fmt.Sprintf("http://%s:%s", host, port)); err != nil {
-		return nil, err
-	}
-	return &DB{
-		Container:   catalog,
-		Aux:         []tc.Container{minio},
-		Engine:      e,
-		DSN:         fmt.Sprintf("http://%s:%s", host, port),
-		InternalDSN: fmt.Sprintf("http://%s:8181", alias),
-		Props: map[string]string{
-			"warehouse":            icebergBucket,
-			"s3.endpoint":          "http://" + minioAlias + ":9000",
-			"s3.access-key-id":     icebergKey,
-			"s3.secret-access-key": icebergSecret,
-			"s3.region":            "us-east-1",
-		},
-	}, nil
-}
-
-// createNamespace creates the bench namespace on the REST catalog.
-func createNamespace(ctx context.Context, catalogURL string) error {
+// CreateIcebergNamespace creates the bench namespace on a REST catalog,
+// mirroring how the SQL engines pre-create their bench database. The fixture's
+// SQLite backend also races on concurrent creation from parallel writers.
+func CreateIcebergNamespace(ctx context.Context, catalogURL string) error {
 	body := fmt.Sprintf(`{"namespace":[%q],"properties":{}}`, Namespace)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		catalogURL+"/v1/namespaces", strings.NewReader(body))
@@ -128,7 +69,28 @@ func createNamespace(ctx context.Context, catalogURL string) error {
 	return nil
 }
 
-// Open fails: iceberg has no database/sql handle; parity goes through Count.
+// VerifyIcebergStore writes an object to the warehouse and reads it back before
+// the timed run. Creating a namespace only touches the catalog, so it cannot
+// detect a broken policy, route, or host credential chain. This check uses the
+// same DuckDB path as destination validation; each SUT still uses its own SDK.
+func VerifyIcebergStore(ctx context.Context, db *DB) error {
+	secret, err := s3Secret(db)
+	if err != nil {
+		return err
+	}
+	object := fmt.Sprintf("s3://%s/_preflight.parquet", db.Props[PropWarehouse])
+	script := fmt.Sprintf(`INSTALL httpfs; LOAD httpfs;
+%s
+COPY (SELECT 1 AS ok) TO '%s' (FORMAT parquet);
+SELECT count(*) FROM read_parquet('%s');`, secret, object, object)
+	out, err := exec.CommandContext(ctx, "duckdb", "-csv", "-noheader", "-c", script).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("warehouse %s is not writable: %w:\n%s", db.Props[PropWarehouse], err, out)
+	}
+	return nil
+}
+
+// Open fails because Iceberg has no database/sql handle; validation uses Count.
 func (icebergEngine) Open(db *DB) (*sql.DB, error) {
 	return nil, fmt.Errorf("iceberg has no sql handle")
 }
@@ -138,22 +100,59 @@ func (icebergEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error
 	return 0, fmt.Errorf("iceberg is sink-only")
 }
 
-// Count counts one bench table through duckdb's iceberg extension, attaching
+// s3Secret renders the DuckDB secret Count reads the warehouse through. A
+// MinIO store is addressed at its own endpoint and S3 at the region's, which
+// DuckDB finds on its own.
+func s3Secret(db *DB) (string, error) {
+	region := db.Props[PropS3Region]
+	if region == "" {
+		return "", fmt.Errorf("iceberg db has no %s prop", PropS3Region)
+	}
+	fields := []string{
+		fmt.Sprintf("REGION '%s'", region),
+		fmt.Sprintf("USE_SSL %s", boolProp(db, PropS3UseSSL)),
+	}
+	// Without a static key, DuckDB walks the same default chain the adapters
+	// do and reaches the host's instance role.
+	if key := db.Props[PropS3Key]; key == "" {
+		fields = append(fields, "PROVIDER credential_chain")
+	} else {
+		fields = append(fields,
+			fmt.Sprintf("KEY_ID '%s'", key),
+			fmt.Sprintf("SECRET '%s'", db.Props[PropS3Secret]))
+		if token := db.Props[PropS3Token]; token != "" {
+			fields = append(fields, fmt.Sprintf("SESSION_TOKEN '%s'", token))
+		}
+	}
+	if endpoint := db.Props[PropS3HostEndpoint]; endpoint != "" {
+		fields = append(fields, fmt.Sprintf("ENDPOINT '%s'", endpoint))
+	}
+	if boolProp(db, PropS3PathStyle) == "true" {
+		fields = append(fields, "URL_STYLE 'path'")
+	}
+	return fmt.Sprintf("CREATE SECRET mc (TYPE s3, %s);", strings.Join(fields, ", ")), nil
+}
+
+// boolProp reads a "true"/"false" prop, defaulting to false.
+func boolProp(db *DB, key string) string {
+	if db.Props[key] == "true" {
+		return "true"
+	}
+	return "false"
+}
+
+// Count counts one bench table through DuckDB's Iceberg extension, attaching
 // the REST catalog from the host.
 func (icebergEngine) Count(ctx context.Context, db *DB, table string) (int64, error) {
-	if len(db.Aux) == 0 {
-		return 0, fmt.Errorf("iceberg db has no minio container")
-	}
-	minioHost, minioPort, err := hostPort(ctx, db.Aux[0], "9000")
+	secret, err := s3Secret(db)
 	if err != nil {
 		return 0, err
 	}
 	script := fmt.Sprintf(`INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;
-CREATE SECRET mc (TYPE s3, KEY_ID '%s', SECRET '%s', ENDPOINT '%s:%s', USE_SSL false, URL_STYLE 'path');
+%s
 ATTACH '%s' AS ice (TYPE iceberg, ENDPOINT '%s', AUTHORIZATION_TYPE 'none');
 SELECT count(*) FROM ice.%s.%s;`,
-		icebergKey, icebergSecret, minioHost, minioPort,
-		icebergBucket, db.DSN, Namespace, table)
+		secret, db.Props[PropWarehouse], db.DSN, Namespace, table)
 	out, err := exec.CommandContext(ctx, "duckdb", "-csv", "-noheader", "-c", script).CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("duckdb iceberg count %s: %w:\n%s", table, err, out)

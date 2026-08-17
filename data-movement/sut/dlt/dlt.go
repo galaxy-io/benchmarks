@@ -1,10 +1,6 @@
-// Package dlt runs dlt (github.com/dlt-hub/dlt), which ships as a Python
-// library, not an image: a plain python container gets the library installed
-// during untimed Setup and one pipeline.run moves every table. The pipeline
-// mirrors the vendor's own benchmark configuration
-// (github.com/dlt-hub/sql_database_benchmarking): connectorx backend,
-// parallelized extraction, csv (COPY) load, and their recommended normalize
-// and data-writer settings.
+// Package dlt runs the dlt Python library in a Python container. Setup installs
+// the pinned dependencies. Run executes one pipeline with ConnectorX extraction,
+// Arrow streams, parallel table reads, and CSV loading to Postgres.
 package dlt
 
 import (
@@ -12,6 +8,8 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 
 	tc "github.com/testcontainers/testcontainers-go"
@@ -45,16 +43,30 @@ func (d *Dlt) Name() string { return "dlt" }
 // Image reports the image under test.
 func (d *Dlt) Image() string { return Image + " + " + strings.Join(Requirements, " ") }
 
-// Config reports the configuration, mirroring the vendor benchmark.
+// Config reports the effective pipeline configuration.
 func (d *Dlt) Config() map[string]any {
+	workers := 16
+	batchSize := dltBatchSize()
 	return map[string]any{
 		"backend":          "connectorx",
 		"returnType":       "arrow_stream",
-		"chunkSize":        100000,
 		"loaderFileFormat": "csv",
 		"parallelize":      true,
-		"normalizeWorkers": 3,
+		"normalizeWorkers": workers,
+		"loadWorkers":      workers,
+		"fileMaxBytes":     3000000,
+		"compression":      false,
+		"extractBatchSize": batchSize,
 	}
+}
+
+func dltBatchSize() int {
+	if raw := os.Getenv("BENCH_DLT_BATCH_SIZE"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 100000
 }
 
 // Routes lists routes with a postgres sink; dlt has no native mysql destination.
@@ -63,21 +75,28 @@ func (d *Dlt) Routes() []string { return []string{"pg-pg", "mysql-pg"} }
 // Setup starts an idle python container, copies the pipeline script in, and
 // installs dlt; all of it stays outside the timed window.
 func (d *Dlt) Setup(ctx context.Context, env *harness.Env, tables []string) error {
+	workers := 16
+	batchSize := dltBatchSize()
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
 			Image: Image,
 			Cmd:   []string{"sleep", "infinity"},
 			Env: map[string]string{
-				"SOURCE_DSN": env.Source.InternalDSN,
-				"SINK_DSN":   env.Sink.InternalDSN,
-				"TABLES":     strings.Join(tables, ","),
-				// The vendor benchmark's recommended performance settings.
-				// spawn, not fork: connectorx leaves threads in the main
-				// process and forked normalize workers die nondeterministically.
-				"NORMALIZE__START_METHOD":                "spawn",
-				"NORMALIZE__WORKERS":                     "3",
-				"SOURCES__DATA_WRITER__FILE_MAX_BYTES":   "3000000",
-				"SOURCES__DATA_WRITER__BUFFER_MAX_ITEMS": "200000",
+				"SOURCE_DSN":         env.Source.InternalDSN,
+				"SINK_DSN":           env.Sink.InternalDSN,
+				"TABLES":             strings.Join(tables, ","),
+				"EXTRACT_BATCH_SIZE": strconv.Itoa(batchSize),
+				// Use 16 normalize and load workers on the 64-vCPU reference host.
+				// The spawn method avoids forking the ConnectorX threads held by
+				// the main process.
+				"NORMALIZE__START_METHOD":                     "spawn",
+				"NORMALIZE__WORKERS":                          strconv.Itoa(workers),
+				"LOAD__WORKERS":                               strconv.Itoa(workers),
+				"SOURCES__DATA_WRITER__FILE_MAX_BYTES":        "3000000",
+				"SOURCES__DATA_WRITER__BUFFER_MAX_ITEMS":      "200000",
+				"NORMALIZE__DATA_WRITER__FILE_MAX_BYTES":      "3000000",
+				"NORMALIZE__DATA_WRITER__FILE_MAX_ITEMS":      "100000",
+				"NORMALIZE__DATA_WRITER__DISABLE_COMPRESSION": "true",
 			},
 			Labels:   map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "dlt"},
 			Networks: []string{env.Net.Name},

@@ -5,12 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-
-	tc "github.com/testcontainers/testcontainers-go"
 )
 
-// Namespace is where every seeded and delivered table lives: a schema on
-// postgres, a database on mysql.
+// Namespace is where every seeded and delivered table lives: a Postgres schema,
+// a MySQL database, or an Iceberg namespace.
 const Namespace = "bench"
 
 // TableDef is one table an engine can create and bulk load from a csv.
@@ -20,17 +18,16 @@ type TableDef struct {
 	CSV  string
 }
 
-// Engine is one database engine: how to start it, address it, bulk load into
-// it, and count delivered rows for parity.
+// Engine defines how to address a database, bulk-load it, and count rows for
+// validation. It is independent of the database provider.
 type Engine interface {
 	Name() string
-	Start(ctx context.Context, net *tc.DockerNetwork, alias, runID string) (*DB, error)
 	Open(db *DB) (*sql.DB, error)
 	Load(ctx context.Context, db *DB, t TableDef) (int64, error)
 	Count(ctx context.Context, db *DB, table string) (int64, error)
 }
 
-// The engines a route can name; iceberg is sink-only.
+// The engines a route can name; Iceberg is sink-only.
 var (
 	Postgres Engine = postgresEngine{}
 	MySQL    Engine = mysqlEngine{}

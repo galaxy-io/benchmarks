@@ -23,7 +23,7 @@ const Image = "ghcr.io/galaxy-io/filament/standalone:latest"
 // Options is the run configuration, recorded in the result document.
 var Options = map[string]any{
 	"batchMaxRows":        25000,
-	"snapshotParallelism": 4,
+	"snapshotParallelism": 32,
 }
 
 // Filament runs the standalone image and drives one pipeline through it.
@@ -58,7 +58,7 @@ func (f *Filament) Setup(ctx context.Context, env *harness.Env, tables []string)
 		return err
 	}
 	containerEnv := map[string]string{"SOURCE_DSN": srcDSN}
-	// The iceberg sink is configured structurally on its connection, not by DSN.
+	// The Iceberg sink is configured structurally on its connection, not by DSN.
 	if env.Sink.Engine != harness.Iceberg {
 		sinkDSN, err := connectorDSN(env.Sink)
 		if err != nil {
@@ -108,20 +108,25 @@ func (f *Filament) Teardown(ctx context.Context) {
 func (f *Filament) Run(ctx context.Context) error {
 	req := map[string]any{"pipelineId": f.pipelineID, "options": Options}
 	var started struct {
-		Runs []struct {
-			RunID string `json:"runId"`
-		} `json:"runs"`
+		EdgeRuns []struct {
+			Run struct {
+				ID string `json:"id"`
+			} `json:"run"`
+		} `json:"edgeRuns"`
 	}
 	if err := f.call(ctx, "RunPipeline", req, &started); err != nil {
 		return fmt.Errorf("run pipeline: %w", err)
 	}
-	if len(started.Runs) == 0 {
+	if len(started.EdgeRuns) == 0 {
 		return fmt.Errorf("run pipeline: no runs returned")
 	}
 
-	pending := make(map[string]bool, len(started.Runs))
-	for _, r := range started.Runs {
-		pending[r.RunID] = true
+	pending := make(map[string]bool, len(started.EdgeRuns))
+	for _, edgeRun := range started.EdgeRuns {
+		if edgeRun.Run.ID == "" {
+			return fmt.Errorf("run pipeline: edge returned no run id")
+		}
+		pending[edgeRun.Run.ID] = true
 	}
 	for len(pending) > 0 {
 		for id := range pending {
@@ -142,6 +147,9 @@ func (f *Filament) Run(ctx context.Context) error {
 			case "RUN_STATUS_FAILED", "RUN_STATUS_CANCELED", "RUN_STATUS_PARTIAL", "RUN_STATUS_PAUSED":
 				return fmt.Errorf("run %s: %s: %s", id, resp.Snapshot.Run.Status, resp.Snapshot.Run.Error)
 			}
+		}
+		if len(pending) == 0 {
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -202,10 +210,11 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 	edges := make([]map[string]any, 0, len(tables))
 	for _, t := range tables {
 		edges = append(edges, map[string]any{
-			"fromNode":      "src",
-			"resource":      t,
-			"toNode":        "dst",
-			"ingestionType": "INGESTION_TYPE_SNAPSHOT_REPLACE",
+			"fromNode":  "src",
+			"resource":  t,
+			"toNode":    "dst",
+			"readMode":  "READ_MODE_FULL",
+			"writeMode": "WRITE_MODE_REPLACE",
 		})
 	}
 	var version struct {
@@ -215,11 +224,13 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 	}
 	err = f.call(ctx, "CreatePipelineVersion", map[string]any{
 		"pipelineId": created.Pipeline.ID,
-		"nodes": []map[string]any{
-			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
-			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{sinkKey: harness.Namespace}},
+		"graph": map[string]any{
+			"nodes": []map[string]any{
+				{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
+				{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{sinkKey: harness.Namespace}},
+			},
+			"edges": edges,
 		},
-		"edges": edges,
 	}, &version)
 	if err != nil {
 		return "", fmt.Errorf("create pipeline version: %w", err)
@@ -241,20 +252,35 @@ func connectorDSN(db *harness.DB) (string, error) {
 
 // icebergConnectionConfig renders the sink env as the iceberg connector's
 // connection-scoped config: a REST catalog plus the S3 properties iceberg-go
-// needs to reach MinIO.
+// needs to reach the object store.
 func icebergConnectionConfig(db *harness.DB) map[string]any {
+	virtualAddressing := "true"
+	if db.Props[harness.PropS3PathStyle] == "true" {
+		virtualAddressing = "false"
+	}
+	properties := map[string]any{
+		"s3.region":                   db.Props[harness.PropS3Region],
+		"s3.force-virtual-addressing": virtualAddressing,
+	}
+	// iceberg-go selects static credentials only when the access key is set,
+	// and otherwise calls the AWS default chain, so absent credentials stay
+	// out of the config rather than going in empty.
+	if key := db.Props[harness.PropS3Key]; key != "" {
+		properties["s3.access-key-id"] = key
+		properties["s3.secret-access-key"] = db.Props[harness.PropS3Secret]
+		if token := db.Props[harness.PropS3Token]; token != "" {
+			properties["s3.session-token"] = token
+		}
+	}
+	if endpoint := db.Props[harness.PropS3Endpoint]; endpoint != "" {
+		properties["s3.endpoint"] = endpoint
+	}
 	return map[string]any{
 		"catalog": map[string]any{
-			"provider":  "rest",
-			"uri":       db.InternalDSN,
-			"warehouse": db.Props["warehouse"],
-			"properties": map[string]any{
-				"s3.endpoint":                 db.Props["s3.endpoint"],
-				"s3.access-key-id":            db.Props["s3.access-key-id"],
-				"s3.secret-access-key":        db.Props["s3.secret-access-key"],
-				"s3.region":                   db.Props["s3.region"],
-				"s3.force-virtual-addressing": "false",
-			},
+			"provider":   "rest",
+			"uri":        db.InternalDSN,
+			"warehouse":  db.Props[harness.PropWarehouse],
+			"properties": properties,
 		},
 	}
 }
