@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 
 	"strings"
@@ -40,6 +41,8 @@ const (
 
 // pollInterval paces the convergence check against the destination.
 const pollInterval = 500 * time.Millisecond
+
+const slotCleanupTimeout = 10 * time.Second
 
 // Options is the mirror configuration, recorded in the result document, and
 // follows PeerDB's own scale test (PeerDB-io/ab-scale-testing): its sweep of
@@ -380,14 +383,77 @@ func (p *PeerDB) advance(ctx context.Context, sink *sql.DB, remaining []string) 
 func (p *PeerDB) Teardown(ctx context.Context) {
 	if p.server != "" && p.mirror != "" {
 		if conn, err := pgx.Connect(ctx, p.server); err == nil {
-			_, _ = conn.Exec(ctx, "DROP MIRROR IF EXISTS "+p.mirror)
+			if _, err := conn.Exec(ctx, "DROP MIRROR IF EXISTS "+p.mirror); err != nil {
+				log.Printf("peerdb teardown: drop mirror %s: %v", p.mirror, err)
+			}
 			_ = conn.Close(ctx)
+		} else {
+			log.Printf("peerdb teardown: connect to server: %v", err)
 		}
+	}
+	if err := p.dropBenchmarkSlots(ctx); err != nil {
+		log.Printf("peerdb teardown: replication-slot cleanup: %v", err)
 	}
 	for i := len(p.containers) - 1; i >= 0; i-- {
 		_ = p.containers[i].Terminate(ctx)
 	}
 	p.containers = nil
+}
+
+// dropBenchmarkSlots closes the gap between DROP MIRROR returning and
+// PeerDB's asynchronous workflow cleanup. Only inactive slots created by this
+// benchmark are removed; an active slot is never interrupted.
+func (p *PeerDB) dropBenchmarkSlots(ctx context.Context) error {
+	if p.env == nil || p.env.Source == nil {
+		return nil
+	}
+	db, err := p.env.Source.Open()
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	cleanupCtx, cancel := context.WithTimeout(ctx, slotCleanupTimeout)
+	defer cancel()
+	for {
+		rows, err := db.QueryContext(cleanupCtx, `SELECT slot_name, active
+FROM pg_replication_slots
+WHERE slot_name LIKE 'peerflow_slot_bench_bench\_%' ESCAPE '\'`)
+		if err != nil {
+			return err
+		}
+		var active bool
+		var inactive []string
+		for rows.Next() {
+			var name string
+			var isActive bool
+			if err := rows.Scan(&name, &isActive); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			if isActive {
+				active = true
+			} else {
+				inactive = append(inactive, name)
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, name := range inactive {
+			if _, err := db.ExecContext(cleanupCtx, "SELECT pg_drop_replication_slot($1)", name); err != nil {
+				return fmt.Errorf("drop %s: %w", name, err)
+			}
+		}
+		if !active {
+			return nil
+		}
+		select {
+		case <-cleanupCtx.Done():
+			return cleanupCtx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
 }
 
 // merge combines env maps, later keys winning.
