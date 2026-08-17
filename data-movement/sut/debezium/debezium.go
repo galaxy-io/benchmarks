@@ -78,9 +78,9 @@ func (d *Debezium) Config() map[string]any {
 	}
 }
 
-// Setup records the source row counts, prepares the sink namespace, and
-// starts an idle server container with its config baked in. Run starts the
-// Debezium process itself, keeping Docker startup outside the timed window.
+// Setup accepts the seed manifest, prepares the sink namespace, and starts an
+// idle server container with its config baked in. Run starts the Debezium
+// process itself, keeping Docker startup outside the timed window.
 func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	d.env = env
 	d.tables = tables
@@ -91,17 +91,11 @@ func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string)
 		return err
 	}
 
-	src, err := env.Source.Open()
-	if err != nil {
-		return fmt.Errorf("open source: %w", err)
-	}
-	defer func() { _ = src.Close() }()
-	d.expected = map[string]int64{}
+	d.expected = make(map[string]int64, len(tables))
 	for _, t := range tables {
-		var n int64
-		q := fmt.Sprintf("SELECT count(*) FROM %s.%s", harness.Namespace, t)
-		if err := src.QueryRowContext(ctx, q).Scan(&n); err != nil {
-			return fmt.Errorf("count source %s: %w", t, err)
+		n, ok := env.Expected[t]
+		if !ok {
+			return fmt.Errorf("seed manifest has no row count for %s", t)
 		}
 		d.expected[t] = n
 	}
