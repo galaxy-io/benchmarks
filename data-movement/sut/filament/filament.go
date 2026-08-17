@@ -108,20 +108,25 @@ func (f *Filament) Teardown(ctx context.Context) {
 func (f *Filament) Run(ctx context.Context) error {
 	req := map[string]any{"pipelineId": f.pipelineID, "options": Options}
 	var started struct {
-		Runs []struct {
-			RunID string `json:"runId"`
-		} `json:"runs"`
+		EdgeRuns []struct {
+			Run struct {
+				ID string `json:"id"`
+			} `json:"run"`
+		} `json:"edgeRuns"`
 	}
 	if err := f.call(ctx, "RunPipeline", req, &started); err != nil {
 		return fmt.Errorf("run pipeline: %w", err)
 	}
-	if len(started.Runs) == 0 {
+	if len(started.EdgeRuns) == 0 {
 		return fmt.Errorf("run pipeline: no runs returned")
 	}
 
-	pending := make(map[string]bool, len(started.Runs))
-	for _, r := range started.Runs {
-		pending[r.RunID] = true
+	pending := make(map[string]bool, len(started.EdgeRuns))
+	for _, edgeRun := range started.EdgeRuns {
+		if edgeRun.Run.ID == "" {
+			return fmt.Errorf("run pipeline: edge returned no run id")
+		}
+		pending[edgeRun.Run.ID] = true
 	}
 	for len(pending) > 0 {
 		for id := range pending {
@@ -205,10 +210,11 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 	edges := make([]map[string]any, 0, len(tables))
 	for _, t := range tables {
 		edges = append(edges, map[string]any{
-			"fromNode":      "src",
-			"resource":      t,
-			"toNode":        "dst",
-			"ingestionType": "INGESTION_TYPE_SNAPSHOT_REPLACE",
+			"fromNode":  "src",
+			"resource":  t,
+			"toNode":    "dst",
+			"readMode":  "READ_MODE_FULL",
+			"writeMode": "WRITE_MODE_REPLACE",
 		})
 	}
 	var version struct {
@@ -218,11 +224,13 @@ func (f *Filament) createPipeline(ctx context.Context, env *harness.Env, tables 
 	}
 	err = f.call(ctx, "CreatePipelineVersion", map[string]any{
 		"pipelineId": created.Pipeline.ID,
-		"nodes": []map[string]any{
-			{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
-			{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{sinkKey: harness.Namespace}},
+		"graph": map[string]any{
+			"nodes": []map[string]any{
+				{"id": "src", "kind": "CONNECTOR_KIND_SOURCE", "connectionId": srcID, "config": map[string]any{"schema": harness.Namespace}},
+				{"id": "dst", "kind": "CONNECTOR_KIND_SINK", "connectionId": dstID, "config": map[string]any{sinkKey: harness.Namespace}},
+			},
+			"edges": edges,
 		},
-		"edges": edges,
 	}, &version)
 	if err != nil {
 		return "", fmt.Errorf("create pipeline version: %w", err)

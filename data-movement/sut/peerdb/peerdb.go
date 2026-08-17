@@ -391,13 +391,16 @@ func (p *PeerDB) Teardown(ctx context.Context) {
 			log.Printf("peerdb teardown: connect to server: %v", err)
 		}
 	}
-	if err := p.dropBenchmarkSlots(ctx); err != nil {
-		log.Printf("peerdb teardown: replication-slot cleanup: %v", err)
-	}
 	for i := len(p.containers) - 1; i >= 0; i-- {
 		_ = p.containers[i].Terminate(ctx)
 	}
 	p.containers = nil
+	// DROP MIRROR is asynchronous. Stop the workers first so their replication
+	// connections release the slot, then clean up with a fresh bounded context;
+	// the container teardown context may already be nearly exhausted.
+	if err := p.dropBenchmarkSlots(context.Background()); err != nil {
+		log.Printf("peerdb teardown: replication-slot cleanup: %v", err)
+	}
 }
 
 // dropBenchmarkSlots closes the gap between DROP MIRROR returning and
