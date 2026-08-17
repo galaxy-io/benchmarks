@@ -76,6 +76,17 @@ variable "rds_throughput" {
   default     = 4000
 }
 
+variable "rds_monitoring_interval" {
+  description = "Enhanced Monitoring interval in seconds; use 0 to disable"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([0, 1, 5, 10, 15, 30, 60], var.rds_monitoring_interval)
+    error_message = "rds_monitoring_interval must be 0, 1, 5, 10, 15, 30, or 60."
+  }
+}
+
 variable "remote_iceberg" {
   description = "Provision an S3 warehouse for Iceberg sinks rather than running MinIO on the benchmark host"
   type        = bool

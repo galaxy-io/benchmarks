@@ -32,6 +32,9 @@ type seed struct {
 	sf     float64
 	months int
 	reuse  bool
+	// manifests is keyed by engine and DSN. Once a source is seeded, every SUT
+	// receives these counts without issuing an untimed COUNT(*) against it.
+	manifests map[string][]datasets.Table
 }
 
 // label renders the dataset label recorded in results.
@@ -46,14 +49,29 @@ func (s seed) label() string {
 }
 
 // seed loads the dataset into db and reports its tables.
-func (s seed) seed(ctx context.Context, db *harness.DB) ([]datasets.Table, error) {
+func (s *seed) seed(ctx context.Context, db *harness.DB) ([]datasets.Table, error) {
+	key := db.Engine.Name() + "|" + db.DSN
 	// A full load only reads the source, so a seed already in place serves
 	// every SUT and route in a sweep. The label has to match: a seed built
 	// with other parameters is a different dataset wearing the same tables.
 	if s.reuse {
+		if tables, ok := s.manifests[key]; ok {
+			return slices.Clone(tables), nil
+		}
 		if got := datasets.LoadedSeed(ctx, db); got == s.label() {
 			log.Printf("reusing %s already seeded on the source", got)
-			return datasets.CountSeeded(ctx, db, s.tableNames())
+			tables, err := datasets.CountSeeded(ctx, db, s.tableNames())
+			if err != nil {
+				return nil, err
+			}
+			s.manifests[key] = slices.Clone(tables)
+			return tables, nil
+		}
+		// A crashed or interrupted cohort can leave a different seed behind.
+		// Reset it once here; per-repetition provisioning deliberately preserves
+		// the namespace when reuse is enabled.
+		if err := harness.DropNamespace(ctx, db); err != nil {
+			return nil, fmt.Errorf("reset reusable source: %w", err)
 		}
 	}
 	var tables []datasets.Table
@@ -73,6 +91,7 @@ func (s seed) seed(ctx context.Context, db *harness.DB) ([]datasets.Table, error
 		if err := datasets.MarkSeed(ctx, db, s.label()); err != nil {
 			return nil, err
 		}
+		s.manifests[key] = slices.Clone(tables)
 	}
 	return tables, nil
 }
@@ -146,9 +165,12 @@ func run(args []string) error {
 	sutName := fs.String("sut", sut.Names[0], "system under test, or all")
 	dataset := fs.String("dataset", datanames[0], "dataset to seed")
 	reuseSeed := fs.Bool("reuse-seed", false, "seed the remote source once for the sweep, wiping it at the end")
+	coldRDS := fs.Bool("cold-rds", false, "reboot remote SQL endpoints before every timed repetition")
+	rdsMetrics := fs.Bool("rds-metrics", true, "capture RDS CloudWatch and database health metrics when RDS IDs are present")
+	rdsSettle := fs.Duration("rds-settle", 30*time.Second, "quiet period after RDS recovery and SUT setup")
 	sf := fs.Float64("sf", 0.01, "TPC-H scale factor (tpch dataset)")
 	months := fs.Int("months", 1, "months of history back from 2024-12 to seed, 192 = all (taxi dataset)")
-	reps := fs.Int("reps", 1, "repetitions, each with fresh containers and seed")
+	reps := fs.Int("reps", 1, "repetitions, each with fresh SUT containers and sink")
 	out := fs.String("out", "results", "directory for result JSON")
 	timeout := fs.Duration("timeout", time.Hour, "timeout for each repetition")
 	topology := fs.String("topology", topologies[0], "database placement: local containers, remote DSNs, or exactly one of each (hybrid)")
@@ -180,6 +202,9 @@ func run(args []string) error {
 	if *timeout <= 0 {
 		return fmt.Errorf("timeout must be positive, got %s", *timeout)
 	}
+	if *rdsSettle < 0 {
+		return fmt.Errorf("rds-settle cannot be negative, got %s", *rdsSettle)
+	}
 	if *dataset == "tpch" && *sf <= 0 {
 		return fmt.Errorf("TPC-H scale factor must be positive, got %v", *sf)
 	}
@@ -194,8 +219,25 @@ func run(args []string) error {
 	if err := validateTopologyDSNs(routeList, *topology); err != nil {
 		return err
 	}
+	if *coldRDS {
+		if err := validateRDSIdentifiers(routeList, *topology); err != nil {
+			return err
+		}
+	}
 
-	sd := seed{name: *dataset, sf: *sf, months: *months, reuse: *reuseSeed}
+	var rdsControl *harness.RDSControl
+	if *topology != "local" && (*coldRDS || *rdsMetrics) && hasRDSIdentifiers(routeList) {
+		rdsControl, err = harness.NewRDSControl(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	runCfg := runConfig{
+		topology: *topology, coldRDS: *coldRDS, rdsMetrics: *rdsMetrics,
+		rdsSettle: *rdsSettle, rds: rdsControl,
+	}
+
+	sd := &seed{name: *dataset, sf: *sf, months: *months, reuse: *reuseSeed, manifests: map[string][]datasets.Table{}}
 	var combos []*benchmarkCombo
 	for _, rt := range routeList {
 		for _, sn := range sutList {
@@ -228,7 +270,7 @@ func run(args []string) error {
 			return fmt.Errorf("check result path %s: %w", path, err)
 		}
 	}
-	if err := runCombos(ctx, combos, sd, *reps, *out, *topology, *timeout, sweep); err != nil {
+	if err := runCombos(ctx, combos, sd, *reps, *out, runCfg, *timeout, sweep); err != nil {
 		return err
 	}
 	// The sweep is over, so the seed it shared has no next reader. Leaving it
@@ -244,7 +286,15 @@ type benchmarkCombo struct {
 	err     error
 }
 
-func newBenchmarkCombo(scenario, route, sutName string, sd seed, topology, cohort, machine string) (*benchmarkCombo, error) {
+type runConfig struct {
+	topology   string
+	coldRDS    bool
+	rdsMetrics bool
+	rdsSettle  time.Duration
+	rds        *harness.RDSControl
+}
+
+func newBenchmarkCombo(scenario, route, sutName string, sd *seed, topology, cohort, machine string) (*benchmarkCombo, error) {
 	if err := validateDistinctRemoteEndpoints(route, topology); err != nil {
 		return nil, err
 	}
@@ -273,7 +323,7 @@ func newBenchmarkCombo(scenario, route, sutName string, sd seed, topology, cohor
 
 // runCombos rotates the first combination each repetition. A remote sweep
 // therefore does not give one SUT every cold run and another every warm run.
-func runCombos(ctx context.Context, combos []*benchmarkCombo, sd seed, reps int, out, topology string, timeout time.Duration, sweep bool) error {
+func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int, out string, cfg runConfig, timeout time.Duration, sweep bool) error {
 	for i := range reps {
 		for offset := range len(combos) {
 			combo := combos[(i+offset)%len(combos)]
@@ -282,7 +332,7 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd seed, reps int,
 			}
 			log.Printf("run %s %s %s, rep %d/%d", combo.sutName, combo.result.Scenario, combo.route, i+1, reps)
 			repCtx, cancel := context.WithTimeout(ctx, timeout)
-			rep, rows, err := runOnce(repCtx, sut.New(combo.sutName, combo.route), combo.route, sd, topology)
+			rep, rows, err := runOnce(repCtx, sut.New(combo.sutName, combo.route), combo.route, sd, cfg)
 			cancel()
 			if err != nil {
 				combo.err = fmt.Errorf("rep %d: %w", i+1, err)
@@ -338,7 +388,7 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd seed, reps int,
 // wipeSeeds drops the shared seed from every remote source the sweep read, so
 // the next dataset starts on a clean namespace rather than beside this one. A
 // local source is a container that has already been thrown away.
-func wipeSeeds(ctx context.Context, routeList []string, topology string, sd seed) error {
+func wipeSeeds(ctx context.Context, routeList []string, topology string, sd *seed) error {
 	if !sd.reuse || topology == "local" {
 		return nil
 	}
@@ -397,6 +447,47 @@ func validateTopologyDSNs(routeList []string, topology string) error {
 		case "hybrid":
 			if remote != 1 {
 				return fmt.Errorf("-topology hybrid: route %s has %d remote ends, needs exactly one", route, remote)
+			}
+		}
+	}
+	return nil
+}
+
+func hasRDSIdentifiers(routeList []string) bool {
+	for _, route := range routeList {
+		ends, err := routeEnds(route)
+		if err != nil {
+			continue
+		}
+		for _, end := range ends {
+			if end.Engine == harness.Iceberg {
+				continue
+			}
+			name := fmt.Sprintf("BENCH_%s_%s_RDS_ID", strings.ToUpper(end.Role), strings.ToUpper(end.Engine.Name()))
+			if os.Getenv(name) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validateRDSIdentifiers(routeList []string, topology string) error {
+	if topology == "local" {
+		return nil
+	}
+	for _, route := range routeList {
+		ends, err := routeEnds(route)
+		if err != nil {
+			return err
+		}
+		for _, end := range ends {
+			if end.Engine == harness.Iceberg || remoteDSN(end.Role, end.Engine) == "" {
+				continue
+			}
+			name := fmt.Sprintf("BENCH_%s_%s_RDS_ID", strings.ToUpper(end.Role), strings.ToUpper(end.Engine.Name()))
+			if os.Getenv(name) == "" {
+				return fmt.Errorf("-cold-rds requires %s for route %s", name, route)
 			}
 		}
 	}
@@ -540,46 +631,74 @@ func routeEnds(route string) ([]struct {
 }
 
 // runOnce provisions a fresh environment, seeds, runs the SUT, and checks parity.
-func runOnce(ctx context.Context, s sut.SUT, route string, sd seed, topology string) (harness.Rep, int64, error) {
+func runOnce(ctx context.Context, s sut.SUT, route string, sd *seed, cfg runConfig) (harness.Rep, int64, error) {
 	var rep harness.Rep
 
 	srcEngine, sinkEngine, err := harness.ParseRoute(route)
 	if err != nil {
 		return rep, 0, err
 	}
-	source, err := resolveProvider(srcEngine, "source", topology)
+	source, err := resolveProvider(srcEngine, "source", cfg.topology)
 	if err != nil {
 		return rep, 0, err
 	}
-	sink, err := resolveProvider(sinkEngine, "sink", topology)
+	sink, err := resolveProvider(sinkEngine, "sink", cfg.topology)
 	if err != nil {
 		return rep, 0, err
 	}
 
 	runID := fmt.Sprintf("bench-%d", time.Now().UnixNano())
-	env, err := harness.NewEnv(ctx, route, runID, source, sink)
+	// Reusable remote sources retain the cohort seed. Local providers are fresh
+	// regardless, and non-reuse runs retain the original reset-per-rep behavior.
+	resetSource := !sd.reuse || remoteDSN("source", srcEngine) == "" || cfg.topology == "local"
+	provisionStarted := time.Now()
+	env, err := harness.NewEnv(ctx, route, runID, source, sink, resetSource)
 	if err != nil {
 		return rep, 0, err
 	}
+	provision := time.Since(provisionStarted)
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		env.Terminate(cleanupCtx)
 	}()
 
+	seedStarted := time.Now()
 	tables, err := sd.seed(ctx, env.Source)
 	if err != nil {
 		return rep, 0, fmt.Errorf("seed: %w", err)
 	}
+	seedDuration := time.Since(seedStarted)
 	var totalRows int64
 	names := make([]string, 0, len(tables))
 	for _, t := range tables {
 		names = append(names, t.Name)
 		totalRows += t.Rows
 	}
+	env.Expected = make(map[string]int64, len(tables))
+	for _, t := range tables {
+		env.Expected[t.Name] = t.Rows
+	}
+
+	rdsEndpoints := harness.RDSEndpoints(env)
+	if cfg.coldRDS {
+		if cfg.rds == nil || len(rdsEndpoints) == 0 {
+			return rep, 0, fmt.Errorf("cold RDS requested but no controlled endpoints were found")
+		}
+		rebooted, err := cfg.rds.Reboot(ctx, rdsEndpoints)
+		if err != nil {
+			return rep, 0, err
+		}
+		rep.ColdStart = &harness.ColdStart{RebootSeconds: rebooted.Seconds(), SettleSeconds: cfg.rdsSettle.Seconds()}
+		log.Printf("RDS endpoints recovered after %.1fs", rebooted.Seconds())
+	}
 
 	setupStart := time.Now()
+	teardownDone := false
 	defer func() {
+		if teardownDone {
+			return
+		}
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		s.Teardown(cleanupCtx)
@@ -588,29 +707,99 @@ func runOnce(ctx context.Context, s sut.SUT, route string, sd seed, topology str
 		return rep, 0, err
 	}
 	setup := time.Since(setupStart)
+	if cfg.coldRDS && cfg.rdsSettle > 0 {
+		select {
+		case <-ctx.Done():
+			return rep, 0, ctx.Err()
+		case <-time.After(cfg.rdsSettle):
+		}
+	}
+
+	health := endpointHealth(env, rdsEndpoints)
+	for i := range health {
+		health[i].Before = snapshotEndpoint(ctx, env, health[i].Role)
+	}
 
 	sampler := startSampler(ctx, runID)
-	defer stopSampler(sampler)
-	started := time.Now()
+	started := time.Now().UTC()
 	if err := s.Run(ctx); err != nil {
+		_ = stopSampler(sampler)
 		return rep, 0, err
 	}
-	wall := time.Since(started)
+	ended := time.Now().UTC()
+	wall := ended.Sub(started)
 	resources := stopSampler(sampler)
+	for i := range health {
+		health[i].After = snapshotEndpoint(ctx, env, health[i].Role)
+	}
 
-	parity, pass, err := harness.CheckParity(ctx, env.Source, env.Sink, names)
+	// Teardown is explicit so leaked replication slots are visible in a second
+	// source snapshot before the next repetition begins.
+	teardownStarted := time.Now()
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	s.Teardown(cleanupCtx)
+	cancel()
+	teardownDuration := time.Since(teardownStarted)
+	teardownDone = true
+	for i := range health {
+		health[i].AfterTeardown = snapshotEndpoint(ctx, env, health[i].Role)
+	}
+
+	validationStarted := time.Now()
+	parity, pass, err := harness.CheckParity(ctx, env.Sink, names, env.Expected)
 	if err != nil {
 		return rep, 0, err
 	}
+	validationDuration := time.Since(validationStarted)
 	rep = harness.Rep{
-		SetupSeconds: setup.Seconds(),
-		WallSeconds:  wall.Seconds(),
-		RowsPerSec:   float64(totalRows) / wall.Seconds(),
-		Resources:    resources,
-		Parity:       parity,
-		ParityPass:   pass,
+		StartedAt:         started,
+		EndedAt:           ended,
+		ColdStart:         rep.ColdStart,
+		ProvisionSeconds:  provision.Seconds(),
+		SeedSeconds:       seedDuration.Seconds(),
+		SetupSeconds:      setup.Seconds(),
+		WallSeconds:       wall.Seconds(),
+		TeardownSeconds:   teardownDuration.Seconds(),
+		ValidationSeconds: validationDuration.Seconds(),
+		RowsPerSec:        float64(totalRows) / wall.Seconds(),
+		Resources:         resources,
+		Parity:            parity,
+		ParityPass:        pass,
+		Databases:         health,
+	}
+	if cfg.rdsMetrics && cfg.rds != nil {
+		for i := range rep.Databases {
+			if rep.Databases[i].RDSIdentifier == "" {
+				continue
+			}
+			metrics, err := cfg.rds.Metrics(ctx, rep.Databases[i].RDSIdentifier, started, ended)
+			if err != nil {
+				rep.Databases[i].MetricsError = err.Error()
+				continue
+			}
+			rep.Databases[i].CloudWatch = metrics
+		}
 	}
 	return rep, totalRows, nil
+}
+
+func endpointHealth(env *harness.Env, endpoints []harness.RDSEndpoint) []harness.EndpointHealth {
+	ids := map[string]string{}
+	for _, endpoint := range endpoints {
+		ids[endpoint.Role] = endpoint.Identifier
+	}
+	out := []harness.EndpointHealth{{Role: "source", Engine: env.Source.Engine.Name(), RDSIdentifier: ids["source"]}}
+	if env.Sink.Engine != harness.Iceberg {
+		out = append(out, harness.EndpointHealth{Role: "sink", Engine: env.Sink.Engine.Name(), RDSIdentifier: ids["sink"]})
+	}
+	return out
+}
+
+func snapshotEndpoint(ctx context.Context, env *harness.Env, role string) *harness.DatabaseSnapshot {
+	if role == "source" {
+		return harness.SnapshotDatabase(ctx, env.Source)
+	}
+	return harness.SnapshotDatabase(ctx, env.Sink)
 }
 
 // startSampler begins resource sampling; a sampler failure never fails a run.

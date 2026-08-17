@@ -25,11 +25,12 @@ func (r Remote) Provision(ctx context.Context, spec harness.ProvisionSpec) (*har
 		InternalDSN: r.DSN,
 		Close:       func(context.Context) error { return nil },
 	}
-	// Container databases are fresh for every repetition. Reset both persistent
-	// roles before use so changing datasets and crashed runs cannot leave tables
-	// that discovery-based tools accidentally include.
-	if err := reset(ctx, db); err != nil {
-		return nil, err
+	if spec.Reset {
+		// Sinks reset every repetition. A reusable source resets once when its
+		// seed is prepared, then remains intact for the rest of the cohort.
+		if err := reset(ctx, db); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }

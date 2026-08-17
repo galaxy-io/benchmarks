@@ -33,14 +33,75 @@ type Endpoint struct {
 	Label    string `json:"label,omitempty"`
 }
 
-// Rep is one repetition: fresh containers, fresh seed, one timed run.
+// ColdStart records the untimed work used to establish a repeatable RDS state.
+type ColdStart struct {
+	RebootSeconds float64 `json:"rebootSeconds"`
+	SettleSeconds float64 `json:"settleSeconds"`
+}
+
+// MetricPoint is one timestamped CloudWatch value.
+type MetricPoint struct {
+	At    time.Time `json:"at"`
+	Value float64   `json:"value"`
+}
+
+// MetricSeries retains the raw one-minute RDS CloudWatch points that overlap
+// the timed window. Enhanced Monitoring remains available at one-second
+// resolution in the RDSOSMetrics CloudWatch Logs group.
+type MetricSeries struct {
+	Name   string        `json:"name"`
+	Stat   string        `json:"stat"`
+	Points []MetricPoint `json:"points,omitempty"`
+}
+
+// ReplicationSlot is the part of pg_replication_slots that can contaminate a
+// later repetition by pinning WAL.
+type ReplicationSlot struct {
+	Name          string `json:"name"`
+	Active        bool   `json:"active"`
+	RetainedBytes int64  `json:"retainedBytes"`
+	WALStatus     string `json:"walStatus,omitempty"`
+}
+
+// DatabaseSnapshot captures engine counters without resetting them. Before and
+// after values are retained so analysis can compute deltas without changing
+// database state.
+type DatabaseSnapshot struct {
+	CapturedAt time.Time          `json:"capturedAt"`
+	Counters   map[string]float64 `json:"counters,omitempty"`
+	Slots      []ReplicationSlot  `json:"replicationSlots,omitempty"`
+	Error      string             `json:"error,omitempty"`
+}
+
+// EndpointHealth combines database-native snapshots and RDS CloudWatch data.
+type EndpointHealth struct {
+	Role          string            `json:"role"`
+	Engine        string            `json:"engine"`
+	RDSIdentifier string            `json:"rdsIdentifier,omitempty"`
+	Before        *DatabaseSnapshot `json:"before,omitempty"`
+	After         *DatabaseSnapshot `json:"after,omitempty"`
+	AfterTeardown *DatabaseSnapshot `json:"afterTeardown,omitempty"`
+	CloudWatch    []MetricSeries    `json:"cloudWatch,omitempty"`
+	MetricsError  string            `json:"metricsError,omitempty"`
+}
+
+// Rep is one repetition: fresh SUT containers, an isolated sink, and one timed
+// run. A remote cohort can share one immutable source seed across its reps.
 type Rep struct {
-	SetupSeconds float64       `json:"setupSeconds"`
-	WallSeconds  float64       `json:"wallSeconds"`
-	RowsPerSec   float64       `json:"rowsPerSec"`
-	Resources    []Usage       `json:"resources,omitempty"`
-	Parity       []TableParity `json:"parity"`
-	ParityPass   bool          `json:"parityPass"`
+	StartedAt         time.Time        `json:"startedAt,omitempty"`
+	EndedAt           time.Time        `json:"endedAt,omitempty"`
+	ColdStart         *ColdStart       `json:"coldStart,omitempty"`
+	ProvisionSeconds  float64          `json:"provisionSeconds,omitempty"`
+	SeedSeconds       float64          `json:"seedSeconds,omitempty"`
+	SetupSeconds      float64          `json:"setupSeconds"`
+	WallSeconds       float64          `json:"wallSeconds"`
+	TeardownSeconds   float64          `json:"teardownSeconds,omitempty"`
+	ValidationSeconds float64          `json:"validationSeconds,omitempty"`
+	RowsPerSec        float64          `json:"rowsPerSec"`
+	Resources         []Usage          `json:"resources,omitempty"`
+	Parity            []TableParity    `json:"parity"`
+	ParityPass        bool             `json:"parityPass"`
+	Databases         []EndpointHealth `json:"databases,omitempty"`
 }
 
 // Result is the JSON document one benchmark invocation emits.
@@ -110,18 +171,20 @@ func median(s []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
-// CheckParity counts every table on both sides in the bench namespace.
-func CheckParity(ctx context.Context, source, sink *DB, tables []string) ([]TableParity, bool, error) {
+// CheckParity counts delivered tables and compares them with the immutable
+// seed manifest. A full load never mutates its source, so rescanning the source
+// after every repetition only pollutes the cache for the next run.
+func CheckParity(ctx context.Context, sink *DB, tables []string, expected map[string]int64) ([]TableParity, bool, error) {
 	pass := true
 	out := make([]TableParity, 0, len(tables))
 	for _, table := range tables {
-		p := TableParity{Table: table}
-		n, err := source.Engine.Count(ctx, source, table)
-		if err != nil {
-			return nil, false, fmt.Errorf("count source %s: %w", table, err)
+		sourceRows, ok := expected[table]
+		if !ok {
+			return nil, false, fmt.Errorf("seed manifest has no row count for %s", table)
 		}
-		p.Source = n
-		if n, err = sink.Engine.Count(ctx, sink, table); err != nil {
+		p := TableParity{Table: table, Source: sourceRows}
+		n, err := sink.Engine.Count(ctx, sink, table)
+		if err != nil {
 			log.Printf("sink count %s: %v", table, err)
 			p.Sink = -1
 		} else {
