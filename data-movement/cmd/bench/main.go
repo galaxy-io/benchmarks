@@ -168,6 +168,7 @@ func run(args []string) error {
 	coldRDS := fs.Bool("cold-rds", false, "reboot remote SQL endpoints before every timed repetition")
 	rdsMetrics := fs.Bool("rds-metrics", true, "capture RDS CloudWatch and database health metrics when RDS IDs are present")
 	rdsSettle := fs.Duration("rds-settle", 30*time.Second, "quiet period after RDS recovery and SUT setup")
+	quiesce := fs.Duration("quiesce-timeout", 5*time.Minute, "how long to wait for autovacuum to finish on an endpoint before a timed repetition")
 	sf := fs.Float64("sf", 0.01, "TPC-H scale factor (tpch dataset)")
 	months := fs.Int("months", 1, "months of history back from 2024-12 to seed, 192 = all (taxi dataset)")
 	reps := fs.Int("reps", 1, "repetitions, each with fresh SUT containers and sink")
@@ -205,6 +206,9 @@ func run(args []string) error {
 	if *rdsSettle < 0 {
 		return fmt.Errorf("rds-settle cannot be negative, got %s", *rdsSettle)
 	}
+	if *quiesce <= 0 {
+		return fmt.Errorf("quiesce-timeout must be positive, got %s", *quiesce)
+	}
 	if *dataset == "tpch" && *sf <= 0 {
 		return fmt.Errorf("TPC-H scale factor must be positive, got %v", *sf)
 	}
@@ -234,7 +238,7 @@ func run(args []string) error {
 	}
 	runCfg := runConfig{
 		topology: *topology, coldRDS: *coldRDS, rdsMetrics: *rdsMetrics,
-		rdsSettle: *rdsSettle, rds: rdsControl,
+		rdsSettle: *rdsSettle, rds: rdsControl, quiesce: *quiesce,
 	}
 
 	sd := &seed{name: *dataset, sf: *sf, months: *months, reuse: *reuseSeed, manifests: map[string][]datasets.Table{}}
@@ -270,6 +274,9 @@ func run(args []string) error {
 			return fmt.Errorf("check result path %s: %w", path, err)
 		}
 	}
+	if err := prepareSeeds(ctx, routeList, *topology, sd); err != nil {
+		return err
+	}
 	if err := runCombos(ctx, combos, sd, *reps, *out, runCfg, *timeout, sweep); err != nil {
 		return err
 	}
@@ -291,6 +298,7 @@ type runConfig struct {
 	coldRDS    bool
 	rdsMetrics bool
 	rdsSettle  time.Duration
+	quiesce    time.Duration
 	rds        *harness.RDSControl
 }
 
@@ -385,6 +393,47 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int
 // validateTopologyDSNs checks every selected route against the topology before
 // anything is provisioned. A sweep crosses both engines, so it names the exact
 // variable a route is missing rather than falling back to a container.
+// prepareSeeds loads the shared seed into every remote source before any
+// repetition starts, so rep 1 no longer carries the load and its vacuum.
+func prepareSeeds(ctx context.Context, routeList []string, topology string, sd *seed) error {
+	if !sd.reuse || topology == "local" {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, route := range routeList {
+		srcEngine, _, err := harness.ParseRoute(route)
+		if err != nil {
+			return err
+		}
+		dsn := remoteDSN("source", srcEngine)
+		if dsn == "" || seen[srcEngine.Name()] {
+			continue
+		}
+		seen[srcEngine.Name()] = true
+
+		p, err := provider.Remote(srcEngine, dsn)
+		if err != nil {
+			return err
+		}
+		db, err := p.Provision(ctx, harness.ProvisionSpec{Engine: srcEngine, Role: "source"})
+		if err != nil {
+			return err
+		}
+		log.Printf("seeding %s on the %s source", sd.label(), srcEngine.Name())
+		started := time.Now()
+		tables, err := sd.seed(ctx, db)
+		if err != nil {
+			return fmt.Errorf("seed %s source: %w", srcEngine.Name(), err)
+		}
+		var rows int64
+		for _, t := range tables {
+			rows += t.Rows
+		}
+		log.Printf("seeded %s on the %s source: %d rows in %.1fs", sd.label(), srcEngine.Name(), rows, time.Since(started).Seconds())
+	}
+	return nil
+}
+
 // wipeSeeds drops the shared seed from every remote source the sweep read, so
 // the next dataset starts on a clean namespace rather than beside this one. A
 // local source is a container that has already been thrown away.
@@ -712,6 +761,16 @@ func runOnce(ctx context.Context, s sut.SUT, route string, sd *seed, cfg runConf
 		case <-ctx.Done():
 			return rep, 0, ctx.Err()
 		case <-time.After(cfg.rdsSettle):
+		}
+	}
+
+	for _, db := range []*harness.DB{env.Source, env.Sink} {
+		waited, err := harness.WaitQuiescent(ctx, db, cfg.quiesce)
+		if err != nil {
+			return rep, 0, err
+		}
+		if waited > 5*time.Second {
+			log.Printf("%s settled after %.1fs of autovacuum", db.Role, waited.Seconds())
 		}
 	}
 

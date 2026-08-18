@@ -6,7 +6,11 @@ are for development and are never mixed into a remote result cohort.
 
 ## Repetitions and timing
 
-A benchmark is one scenario, route, dataset, and SUT. Each repetition:
+A benchmark is one scenario, route, dataset, and SUT. A remote cohort with
+`-reuse-seed` loads its source seed once, before any repetition. Every seeded
+table is vacuumed, frozen, and analyzed as part of the load, so the first
+reader finds settled pages and no autovacuum runs against it. Each repetition
+then:
 
 1. Creates an isolated Docker network for the SUT.
 2. Resets the remote sink or creates fresh Testcontainers databases in local
@@ -18,12 +22,14 @@ A benchmark is one scenario, route, dataset, and SUT. Each repetition:
 5. Starts and configures the SUT. Image pulls, dependency installation,
    discovery, connector registration, and container startup are setup and are
    not timed.
-6. Captures database health, starts the prepared transfer, and measures until
+6. Waits until no autovacuum worker is running on either PostgreSQL endpoint,
+   failing the repetition if one is still running after `-quiesce-timeout`.
+7. Captures database health, starts the prepared transfer, and measures until
    the adapter's completion
    condition is met. Most adapters wait for a process or job to finish;
    Debezium waits for destination row counts to reach the source counts.
    Process initialization after the start trigger is timed.
-7. Captures post-run health, tears down the SUT, captures replication-slot state,
+8. Captures post-run health, tears down the SUT, captures replication-slot state,
    and verifies the destination against the seed manifest.
 
 The configured timeout applies independently to each repetition and covers

@@ -35,9 +35,11 @@ mysql → pg    mysql → mysql    mysql → iceberg
 
 Remote publication cohorts use one immutable source seed, a fresh sink per
 repetition, and `-cold-rds` to reboot the SQL endpoints before every timed run.
-The seed's row-count manifest is passed to adapters, so setup and validation do
-not scan the source. Setup and the configured post-reboot settling period finish
-before the timer starts. The timed window begins when the harness starts the
+The seed is loaded, vacuumed, frozen, and analyzed once before the first
+repetition, and its row-count manifest is passed to adapters, so setup and
+validation do not scan the source. Setup, the configured post-reboot settling
+period, and a check that no autovacuum worker is running finish before the
+timer starts. The timed window begins when the harness starts the
 prepared transfer and includes any process initialization that follows. A
 result is accepted only when every destination table has the manifest row count.
 
