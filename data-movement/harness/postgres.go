@@ -29,13 +29,16 @@ func (postgresEngine) Count(ctx context.Context, db *DB, table string) (int64, e
 
 // Load creates t in the bench schema and COPYs its csv in.
 func (postgresEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error) {
+	name, err := qualifiedTable(t.Name)
+	if err != nil {
+		return 0, err
+	}
 	conn, err := pgx.Connect(ctx, db.DSN)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	name := Namespace + "." + t.Name
 	ddl := fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s; DROP TABLE IF EXISTS %s; CREATE TABLE %s %s",
 		Namespace, name, name, t.DDL)
 	if _, err := conn.Exec(ctx, ddl); err != nil {

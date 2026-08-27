@@ -34,13 +34,16 @@ func (mysqlEngine) Count(ctx context.Context, db *DB, table string) (int64, erro
 // Load creates t in the bench database and loads its CSV with
 // LOAD DATA LOCAL INFILE.
 func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error) {
+	name, err := qualifiedTable(t.Name)
+	if err != nil {
+		return 0, err
+	}
 	conn, err := e.Open(db)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	name := Namespace + "." + t.Name
 	if _, err := conn.ExecContext(ctx, "DROP TABLE IF EXISTS "+name); err != nil {
 		return 0, fmt.Errorf("drop %s: %w", t.Name, err)
 	}
@@ -49,10 +52,11 @@ func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error
 	}
 	mysql.RegisterLocalFile(t.CSV)
 	defer mysql.DeregisterLocalFile(t.CSV)
+	csv := strings.ReplaceAll(t.CSV, "'", "''")
 	res, err := conn.ExecContext(ctx, fmt.Sprintf(
 		`LOAD DATA LOCAL INFILE '%s' INTO TABLE %s
 		 FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"' ESCAPED BY ''
-		 LINES TERMINATED BY '\n'`, t.CSV, name))
+		 LINES TERMINATED BY '\n'`, csv, name))
 	if err != nil {
 		return 0, fmt.Errorf("load %s: %w", t.Name, err)
 	}
@@ -68,7 +72,19 @@ func (e mysqlEngine) Load(ctx context.Context, db *DB, t TableDef) (int64, error
 func MySQLDSN(dsn string) (string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse mysql DSN: %w", err)
+	}
+	if u.Scheme != "mysql" {
+		return "", fmt.Errorf("mysql DSN has scheme %q, want mysql", u.Scheme)
+	}
+	if u.User == nil || u.User.Username() == "" {
+		return "", fmt.Errorf("mysql DSN has no user")
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("mysql DSN has no host")
+	}
+	if strings.TrimPrefix(u.Path, "/") == "" {
+		return "", fmt.Errorf("mysql DSN has no database")
 	}
 	cfg := mysql.NewConfig()
 	cfg.User = u.User.Username()

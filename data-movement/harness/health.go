@@ -186,6 +186,8 @@ func WaitQuiescent(ctx context.Context, db *DB, timeout time.Duration) (time.Dur
 	defer func() { _ = h.Close() }()
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 	for {
 		var busy int64
 		err := h.QueryRowContext(waitCtx, `SELECT count(*) FROM pg_stat_activity
@@ -198,8 +200,8 @@ WHERE backend_type = 'autovacuum worker'`).Scan(&busy)
 		}
 		select {
 		case <-waitCtx.Done():
-			return time.Since(started), fmt.Errorf("%s still has %d autovacuum workers after %s", db.Role, busy, timeout)
-		case <-time.After(2 * time.Second):
+			return time.Since(started), fmt.Errorf("wait for %s to settle with %d autovacuum workers: %w", db.Role, busy, waitCtx.Err())
+		case <-ticker.C:
 		}
 	}
 }

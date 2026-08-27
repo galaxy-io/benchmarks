@@ -200,8 +200,9 @@ func CheckParity(ctx context.Context, sink *DB, tables []string, expected map[st
 
 // ResultPath returns the immutable output path for a result.
 func ResultPath(dir string, r *Result) string {
-	name := fmt.Sprintf("%s-%s-%s-%s.json", r.Scenario, r.Route, r.Dataset, safeSlug(r.Topology))
-	return filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), safeSlug(r.Cohort), r.SUT, name)
+	name := fmt.Sprintf("%s-%s-%s-%s.json",
+		safeSlug(r.Scenario), safeSlug(r.Route), safeSlug(r.Dataset), safeSlug(r.Topology))
+	return filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), safeSlug(r.Cohort), safeSlug(r.SUT), name)
 }
 
 // WriteResult writes a result under its date and cohort without overwriting an
@@ -220,11 +221,21 @@ func WriteResult(dir string, r *Result) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	complete := false
+	defer func() {
+		if !complete {
+			_ = f.Close()
+			_ = os.Remove(path)
+		}
+	}()
 	if _, err := f.Write(append(data, '\n')); err != nil {
-		_ = f.Close()
-		return "", err
+		return "", fmt.Errorf("write result: %w", err)
 	}
-	return path, f.Close()
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close result: %w", err)
+	}
+	complete = true
+	return path, nil
 }
 
 func populateHostMetadata(r *Result) {

@@ -177,8 +177,8 @@ func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts
 			// deterministic without globally sorting the full Taxi dataset.
 			idBase := fileOrdinal << 32
 			selects = append(selects, fmt.Sprintf(
-				"SELECT %d + file_row_number AS id, %s FROM read_parquet('%s', file_row_number=true) WHERE %s >= '%d-%02d-01' AND %s < '%d-%02d-01' AND %s < '%d-%02d-01'",
-				idBase, projection, strings.ReplaceAll(file, "'", "''"),
+				"SELECT %d + file_row_number AS id, %s FROM read_parquet(%s, file_row_number=true) WHERE %s >= '%d-%02d-01' AND %s < '%d-%02d-01' AND %s < '%d-%02d-01'",
+				idBase, projection, duckDBString(file),
 				p.pickup, lo.y, lo.m, p.pickup, upper.y, upper.m, p.dropoff, upper.next().y, upper.next().m))
 			fileOrdinal++
 		}
@@ -194,8 +194,8 @@ func seedTaxiTable(ctx context.Context, db *harness.DB, table, ddl string, parts
 
 	csv := filepath.Join(dir, table+".csv")
 	script := fmt.Sprintf(
-		"COPY (SELECT * FROM (%s)) TO '%s' (FORMAT csv, HEADER false);",
-		strings.Join(selects, "\nUNION ALL\n"), csv)
+		"COPY (SELECT * FROM (%s)) TO %s (FORMAT csv, HEADER false);",
+		strings.Join(selects, "\nUNION ALL\n"), duckDBString(csv))
 	if out, err := exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput(); err != nil {
 		return Table{}, fmt.Errorf("duckdb %s export: %w:\n%s", table, err, out)
 	}
@@ -224,10 +224,25 @@ func taxiParquet(ctx context.Context, prefix string, lo, hi month) ([]string, er
 	for m := lo; m.idx() <= hi.idx(); m = m.next() {
 		name := fmt.Sprintf("%s_%d-%02d.parquet", prefix, m.y, m.m)
 		path := filepath.Join(cache, name)
-		if _, err := os.Stat(path); err != nil {
-			if err := downloadTaxiMonth(ctx, name, path); err != nil {
-				return nil, err
+		info, err := os.Stat(path)
+		if err == nil {
+			switch {
+			case !info.Mode().IsRegular():
+				return nil, fmt.Errorf("taxi cache path is not a regular file: %s", path)
+			case info.Size() > 0:
+				files = append(files, path)
+				continue
+			default:
+				if err := os.Remove(path); err != nil {
+					return nil, fmt.Errorf("remove empty taxi cache file %s: %w", path, err)
+				}
 			}
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("inspect taxi cache %s: %w", path, err)
+		}
+		if err := downloadTaxiMonth(ctx, name, path); err != nil {
+			return nil, err
 		}
 		files = append(files, path)
 	}
@@ -237,23 +252,46 @@ func taxiParquet(ctx context.Context, prefix string, lo, hi month) ([]string, er
 // downloadTaxiMonth fetches one month into path. It writes to a temporary file,
 // renames the file after a successful download, and retries up to three times.
 func downloadTaxiMonth(ctx context.Context, name, path string) error {
-	tmp := path + ".part"
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.part")
+	if err != nil {
+		return fmt.Errorf("create temporary taxi download: %w", err)
+	}
+	tmp := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("close temporary taxi download: %w", err)
+	}
+	// DuckDB COPY expects to create its destination itself.
+	if err := os.Remove(tmp); err != nil {
+		return fmt.Errorf("prepare temporary taxi download: %w", err)
+	}
+	defer func() { _ = os.Remove(tmp) }()
+
 	script := fmt.Sprintf(
-		"INSTALL httpfs; LOAD httpfs; COPY (FROM read_parquet('%s')) TO '%s' (FORMAT parquet);",
-		"https://d37ci6vzurychx.cloudfront.net/trip-data/"+name, tmp)
+		"INSTALL httpfs; LOAD httpfs; COPY (FROM read_parquet(%s)) TO %s (FORMAT parquet);",
+		duckDBString("https://d37ci6vzurychx.cloudfront.net/trip-data/"+name), duckDBString(tmp))
 
 	var out []byte
-	var err error
+	var downloadErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		out, err = exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput()
-		if err == nil {
+		out, downloadErr = exec.CommandContext(ctx, "duckdb", "-c", script).CombinedOutput()
+		if downloadErr == nil {
 			return os.Rename(tmp, path)
 		}
 		_ = os.Remove(tmp)
 		if ctx.Err() != nil {
+			return fmt.Errorf("download %s: %w", name, ctx.Err())
+		}
+		if attempt == 3 {
 			break
 		}
-		time.Sleep(time.Duration(attempt) * 5 * time.Second)
+		timer := time.NewTimer(time.Duration(attempt) * 5 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("download %s: %w", name, ctx.Err())
+		case <-timer.C:
+		}
 	}
-	return fmt.Errorf("download %s: %w:\n%s", name, err, out)
+	return fmt.Errorf("download %s: %w:\n%s", name, downloadErr, out)
 }
