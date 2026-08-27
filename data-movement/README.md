@@ -13,6 +13,7 @@ Testcontainers support local development and smoke tests.
 | SUT | Benchmark path | Routes |
 |-----|----------------|--------|
 | filament | Standalone container | SQL sources to SQL or Iceberg |
+| Sling | Official CLI container | Postgres and MySQL |
 | Ingestr | Official CLI container | Postgres and MySQL |
 | Debezium | Debezium Server with JDBC sink | Postgres and MySQL |
 | Airbyte | Source and destination connector containers | Postgres and MySQL |
@@ -85,6 +86,10 @@ Filament, OLake, Debezium, and Ingestr, and 16 for dlt. Debezium uses
 `BENCH_AIRBYTE_CONNECTOR_MEMORY`, `BENCH_DEBEZIUM_BATCH_SIZE`, and
 `BENCH_DLT_BATCH_SIZE` remain calibration overrides; effective values are
 written into the result.
+
+Sling runs one `full-refresh` CLI process per table concurrently. This keeps
+the benchmark on the free CLI and does not require a Sling CLI Pro token for
+parallel-stream execution.
 
 Multi-SUT sweeps rotate their execution order between repetitions so one tool
 does not always receive the coldest or warmest run position.
