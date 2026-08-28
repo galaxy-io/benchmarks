@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -54,6 +55,12 @@ type Sampler struct {
 
 // StartSampler begins polling containers labeled with runID every interval.
 func StartSampler(ctx context.Context, runID string, interval time.Duration) (*Sampler, error) {
+	if runID == "" {
+		return nil, fmt.Errorf("start sampler: run ID is empty")
+	}
+	if interval <= 0 {
+		return nil, fmt.Errorf("start sampler: interval must be positive, got %s", interval)
+	}
 	cli, err := tc.NewDockerClientWithOpts(ctx)
 	if err != nil {
 		return nil, err

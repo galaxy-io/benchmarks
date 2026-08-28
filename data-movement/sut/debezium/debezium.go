@@ -71,8 +71,8 @@ func (d *Debezium) Config() map[string]any {
 		"maxBatchSize":       d.batchSize,
 		"maxQueueSize":       d.batchSize * 4,
 		"sinkBatchSize":      d.batchSize,
-		"insertMode":         "upsert",
-		"primaryKeyMode":     "record_key",
+		"insertMode":         "insert",
+		"primaryKeyMode":     "none",
 		"schemaEvolution":    "basic",
 		"completionCheck":    fmt.Sprintf("row-count poll @%s", pollInterval),
 	}
@@ -236,8 +236,13 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.sink.jdbc.connection.url=" + sinkURL,
 		"debezium.sink.jdbc.connection.username=" + sinkUser,
 		"debezium.sink.jdbc.connection.password=" + sinkPass,
-		"debezium.sink.jdbc.insert.mode=upsert",
-		"debezium.sink.jdbc.primary.key.mode=record_key",
+		// A full load writes into a sink dropped and recreated moments earlier,
+		// so there is nothing to conflict with: plain insert skips the per-row
+		// index probe upsert pays for, and no key mode is needed to drive it. A
+		// replayed batch would raise a unique violation on the table's own
+		// primary key, failing the repetition rather than duplicating rows.
+		"debezium.sink.jdbc.insert.mode=insert",
+		"debezium.sink.jdbc.primary.key.mode=none",
 		"debezium.sink.jdbc.schema.evolution=basic",
 		// Use the same calibrated size for source fetches, engine batches, and
 		// sink writes.

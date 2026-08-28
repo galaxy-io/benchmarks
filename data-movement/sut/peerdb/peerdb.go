@@ -398,15 +398,17 @@ func (p *PeerDB) Teardown(ctx context.Context) {
 	// DROP MIRROR is asynchronous. Stop the workers first so their replication
 	// connections release the slot, then clean up with a fresh bounded context;
 	// the container teardown context may already be nearly exhausted.
-	if err := p.dropBenchmarkSlots(context.Background()); err != nil {
-		log.Printf("peerdb teardown: replication-slot cleanup: %v", err)
+	if err := p.dropBenchmarkReplicationArtifacts(context.Background()); err != nil {
+		log.Printf("peerdb teardown: replication-artifact cleanup: %v", err)
 	}
 }
 
-// dropBenchmarkSlots closes the gap between DROP MIRROR returning and
-// PeerDB's asynchronous workflow cleanup. Only inactive slots created by this
-// benchmark are removed; an active slot is never interrupted.
-func (p *PeerDB) dropBenchmarkSlots(ctx context.Context) error {
+// dropBenchmarkReplicationArtifacts closes the gap between DROP MIRROR
+// returning and PeerDB's asynchronous workflow cleanup. Only inactive slots
+// created by this benchmark are removed; an active slot is never interrupted.
+// The publication is database-wide, so dropping the bench schema does not
+// remove it and later pg_dump runs would otherwise carry it to the sink.
+func (p *PeerDB) dropBenchmarkReplicationArtifacts(ctx context.Context) error {
 	if p.env == nil || p.env.Source == nil {
 		return nil
 	}
@@ -449,6 +451,10 @@ WHERE slot_name LIKE 'peerflow_slot_bench_bench\_%' ESCAPE '\'`)
 			}
 		}
 		if !active {
+			publication := pgx.Identifier{"peerflow_pub_" + p.mirror}.Sanitize()
+			if _, err := db.ExecContext(cleanupCtx, "DROP PUBLICATION IF EXISTS "+publication); err != nil {
+				return fmt.Errorf("drop %s: %w", publication, err)
+			}
 			return nil
 		}
 		select {

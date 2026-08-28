@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -64,37 +65,33 @@ func RDSEndpoints(env *Env) []RDSEndpoint {
 // state and a real SQL connection to recover.
 func (c *RDSControl) Reboot(ctx context.Context, endpoints []RDSEndpoint) (time.Duration, error) {
 	started := time.Now()
-	errCh := make(chan error, len(endpoints))
+	errs := make([]error, len(endpoints))
 	var wg sync.WaitGroup
-	for _, endpoint := range endpoints {
-		endpoint := endpoint
+	for i, endpoint := range endpoints {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if _, err := c.rds.RebootDBInstance(ctx, &rds.RebootDBInstanceInput{
 				DBInstanceIdentifier: aws.String(endpoint.Identifier),
 			}); err != nil {
-				errCh <- fmt.Errorf("reboot %s %s: %w", endpoint.Role, endpoint.Identifier, err)
+				errs[i] = fmt.Errorf("reboot %s %s: %w", endpoint.Role, endpoint.Identifier, err)
 				return
 			}
 			waiter := rds.NewDBInstanceAvailableWaiter(c.rds)
 			if err := waiter.Wait(ctx, &rds.DescribeDBInstancesInput{
 				DBInstanceIdentifier: aws.String(endpoint.Identifier),
 			}, 20*time.Minute); err != nil {
-				errCh <- fmt.Errorf("wait for %s %s: %w", endpoint.Role, endpoint.Identifier, err)
+				errs[i] = fmt.Errorf("wait for %s %s: %w", endpoint.Role, endpoint.Identifier, err)
 				return
 			}
 			if err := waitForSQL(ctx, endpoint.DB, 2*time.Minute); err != nil {
-				errCh <- fmt.Errorf("wait for %s SQL: %w", endpoint.Role, err)
+				errs[i] = fmt.Errorf("wait for %s SQL: %w", endpoint.Role, err)
 			}
 		}()
 	}
 	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return time.Since(started), err
-		}
+	if err := errors.Join(errs...); err != nil {
+		return time.Since(started), err
 	}
 	return time.Since(started), nil
 }
@@ -107,14 +104,19 @@ func waitForSQL(ctx context.Context, db *DB, timeout time.Duration) error {
 		return err
 	}
 	defer func() { _ = h.Close() }()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	var lastErr error
 	for {
 		if err := h.PingContext(waitCtx); err == nil {
 			return nil
+		} else {
+			lastErr = err
 		}
 		select {
 		case <-waitCtx.Done():
-			return waitCtx.Err()
-		case <-time.After(2 * time.Second):
+			return fmt.Errorf("SQL did not recover: %v: %w", lastErr, waitCtx.Err())
+		case <-ticker.C:
 		}
 	}
 }

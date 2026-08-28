@@ -4,6 +4,7 @@ package datasets
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,9 @@ var tpchTables = []struct{ name, ddl string }{
 // SeedTPCH loads TPC-H at scale factor sf into db's bench namespace;
 // requires duckdb on PATH.
 func SeedTPCH(ctx context.Context, db *harness.DB, sf float64) ([]Table, error) {
+	if sf <= 0 || math.IsNaN(sf) || math.IsInf(sf, 0) {
+		return nil, fmt.Errorf("TPC-H scale factor must be finite and positive, got %v", sf)
+	}
 	dir, err := os.MkdirTemp("", "tpch")
 	if err != nil {
 		return nil, err
@@ -44,8 +48,8 @@ func SeedTPCH(ctx context.Context, db *harness.DB, sf float64) ([]Table, error) 
 	var script strings.Builder
 	fmt.Fprintf(&script, "INSTALL tpch; LOAD tpch; CALL dbgen(sf = %v);\n", sf)
 	for _, t := range tpchTables {
-		fmt.Fprintf(&script, "COPY %s TO '%s' (FORMAT csv, HEADER false);\n",
-			t.name, filepath.Join(dir, t.name+".csv"))
+		fmt.Fprintf(&script, "COPY %s TO %s (FORMAT csv, HEADER false);\n",
+			t.name, duckDBString(filepath.Join(dir, t.name+".csv")))
 	}
 	if out, err := exec.CommandContext(ctx, "duckdb", "-c", script.String()).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("duckdb dbgen: %w:\n%s", err, out)

@@ -63,6 +63,9 @@ func CreateIcebergNamespace(ctx context.Context, catalogURL string) error {
 		return fmt.Errorf("create iceberg namespace: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusConflict {
+		return nil
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("create iceberg namespace: %s", resp.Status)
 	}
@@ -81,8 +84,8 @@ func VerifyIcebergStore(ctx context.Context, db *DB) error {
 	object := fmt.Sprintf("s3://%s/_preflight.parquet", db.Props[PropWarehouse])
 	script := fmt.Sprintf(`INSTALL httpfs; LOAD httpfs;
 %s
-COPY (SELECT 1 AS ok) TO '%s' (FORMAT parquet);
-SELECT count(*) FROM read_parquet('%s');`, secret, object, object)
+COPY (SELECT 1 AS ok) TO %s (FORMAT parquet);
+SELECT count(*) FROM read_parquet(%s);`, secret, duckDBString(object), duckDBString(object))
 	out, err := exec.CommandContext(ctx, "duckdb", "-csv", "-noheader", "-c", script).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("warehouse %s is not writable: %w:\n%s", db.Props[PropWarehouse], err, out)
@@ -109,7 +112,7 @@ func s3Secret(db *DB) (string, error) {
 		return "", fmt.Errorf("iceberg db has no %s prop", PropS3Region)
 	}
 	fields := []string{
-		fmt.Sprintf("REGION '%s'", region),
+		"REGION " + duckDBString(region),
 		fmt.Sprintf("USE_SSL %s", boolProp(db, PropS3UseSSL)),
 	}
 	// Without a static key, DuckDB walks the same default chain the adapters
@@ -118,19 +121,23 @@ func s3Secret(db *DB) (string, error) {
 		fields = append(fields, "PROVIDER credential_chain")
 	} else {
 		fields = append(fields,
-			fmt.Sprintf("KEY_ID '%s'", key),
-			fmt.Sprintf("SECRET '%s'", db.Props[PropS3Secret]))
+			"KEY_ID "+duckDBString(key),
+			"SECRET "+duckDBString(db.Props[PropS3Secret]))
 		if token := db.Props[PropS3Token]; token != "" {
-			fields = append(fields, fmt.Sprintf("SESSION_TOKEN '%s'", token))
+			fields = append(fields, "SESSION_TOKEN "+duckDBString(token))
 		}
 	}
 	if endpoint := db.Props[PropS3HostEndpoint]; endpoint != "" {
-		fields = append(fields, fmt.Sprintf("ENDPOINT '%s'", endpoint))
+		fields = append(fields, "ENDPOINT "+duckDBString(endpoint))
 	}
 	if boolProp(db, PropS3PathStyle) == "true" {
 		fields = append(fields, "URL_STYLE 'path'")
 	}
 	return fmt.Sprintf("CREATE SECRET mc (TYPE s3, %s);", strings.Join(fields, ", ")), nil
+}
+
+func duckDBString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 // boolProp reads a "true"/"false" prop, defaulting to false.
@@ -144,15 +151,18 @@ func boolProp(db *DB, key string) string {
 // Count counts one bench table through DuckDB's Iceberg extension, attaching
 // the REST catalog from the host.
 func (icebergEngine) Count(ctx context.Context, db *DB, table string) (int64, error) {
+	if _, err := qualifiedTable(table); err != nil {
+		return 0, err
+	}
 	secret, err := s3Secret(db)
 	if err != nil {
 		return 0, err
 	}
 	script := fmt.Sprintf(`INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;
 %s
-ATTACH '%s' AS ice (TYPE iceberg, ENDPOINT '%s', AUTHORIZATION_TYPE 'none');
+ATTACH %s AS ice (TYPE iceberg, ENDPOINT %s, AUTHORIZATION_TYPE 'none');
 SELECT count(*) FROM ice.%s.%s;`,
-		secret, db.Props[PropWarehouse], db.DSN, Namespace, table)
+		secret, duckDBString(db.Props[PropWarehouse]), duckDBString(db.DSN), Namespace, table)
 	out, err := exec.CommandContext(ctx, "duckdb", "-csv", "-noheader", "-c", script).CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("duckdb iceberg count %s: %w:\n%s", table, err, out)

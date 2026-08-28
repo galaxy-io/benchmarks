@@ -14,6 +14,24 @@ const markerTable = "_seed"
 
 // MarkSeed records label as the dataset now loaded in db.
 func MarkSeed(ctx context.Context, db *harness.DB, label string) error {
+	if db == nil || db.Engine == nil {
+		return fmt.Errorf("mark seed: database has no engine")
+	}
+	if label == "" {
+		return fmt.Errorf("mark seed: label is empty")
+	}
+	if len(label) > 255 {
+		return fmt.Errorf("mark seed: label is %d bytes, maximum is 255", len(label))
+	}
+	var placeholder string
+	switch db.Engine {
+	case harness.Postgres:
+		placeholder = "$1"
+	case harness.MySQL:
+		placeholder = "?"
+	default:
+		return fmt.Errorf("mark seed: unsupported engine %s", db.Engine.Name())
+	}
 	conn, err := db.Open()
 	if err != nil {
 		return err
@@ -23,11 +41,14 @@ func MarkSeed(ctx context.Context, db *harness.DB, label string) error {
 	for _, q := range []string{
 		"DROP TABLE IF EXISTS " + name,
 		fmt.Sprintf("CREATE TABLE %s (label VARCHAR(255))", name),
-		fmt.Sprintf("INSERT INTO %s (label) VALUES ('%s')", name, label),
 	} {
 		if _, err := conn.ExecContext(ctx, q); err != nil {
 			return fmt.Errorf("mark seed: %w", err)
 		}
+	}
+	if _, err := conn.ExecContext(ctx,
+		fmt.Sprintf("INSERT INTO %s (label) VALUES (%s)", name, placeholder), label); err != nil {
+		return fmt.Errorf("mark seed: %w", err)
 	}
 	return nil
 }

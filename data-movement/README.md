@@ -19,6 +19,7 @@ Testcontainers support local development and smoke tests.
 | Airbyte | Source and destination connector containers | Postgres and MySQL |
 | dlt | Python container with ConnectorX | Postgres/MySQL to Postgres |
 | OLake | Official source container and Iceberg writer | Postgres/MySQL to Iceberg |
+| PeerDB | Official service stack | Postgres to Postgres |
 | native | Engine dump client piped to its load client | Same-engine baseline |
 
 Debezium is a CDC engine. The full-load benchmark measures its initial snapshot,
@@ -33,6 +34,20 @@ available routes are:
 pg → pg       pg → mysql       pg → iceberg
 mysql → pg    mysql → mysql    mysql → iceberg
 ```
+
+## Prerequisites
+
+- The Go version declared in `go.mod`.
+- Docker, for local databases and every containerized SUT.
+- The DuckDB CLI on `PATH`, for dataset generation and Iceberg validation.
+- Network access on the first run, so DuckDB can install its extensions and the
+  Taxi seeder can download source Parquet files.
+
+TPC-H data is generated deterministically for the requested scale factor. Taxi
+data is read backward from December 2024 and cached under the operating
+system's user cache directory at `galaxy-benchmarks/taxi`; later repetitions
+reuse successfully downloaded files. Dataset generation, download, source
+loading, and destination validation are outside the timed transfer window.
 
 Remote publication cohorts use one immutable source seed, a fresh sink per
 repetition, and `-cold-rds` to reboot the SQL endpoints before every timed run.

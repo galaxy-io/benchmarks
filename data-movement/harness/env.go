@@ -24,7 +24,15 @@ type DB struct {
 }
 
 // Open opens a database/sql handle to the database from the host.
-func (d *DB) Open() (*sql.DB, error) { return d.Engine.Open(d) }
+func (d *DB) Open() (*sql.DB, error) {
+	if d == nil {
+		return nil, fmt.Errorf("open database: nil DB")
+	}
+	if d.Engine == nil {
+		return nil, fmt.Errorf("open database %q: no engine", d.Role)
+	}
+	return d.Engine.Open(d)
+}
 
 // ProvisionSpec is one request for an addressed database: the engine, the role
 // it plays in the run, and the docker context a container-backed provider

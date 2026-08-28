@@ -18,7 +18,8 @@ import (
 )
 
 const pgScript = `set -e
-pg_dump --no-owner --no-privileges "$SOURCE_DSN" | psql -q -v ON_ERROR_STOP=1 "$SINK_DSN"`
+pg_dump --schema=bench --no-owner --no-privileges --no-publications --no-subscriptions "$SOURCE_DSN" |
+psql -q -v ON_ERROR_STOP=1 "$SINK_DSN"`
 
 const mysqlScript = `set -e
 MYSQL_PWD="$SOURCE_PASSWORD" mysqldump --host "$SOURCE_HOST" --port "$SOURCE_PORT" --user "$SOURCE_USER" $SOURCE_SSL_ARG --single-transaction "$SOURCE_DB" |
@@ -52,7 +53,12 @@ func (n *Native) Image() string {
 func (n *Native) Config() map[string]any {
 	switch n.route {
 	case "pg-pg":
-		return map[string]any{"pipeline": "pg_dump | psql"}
+		return map[string]any{
+			"pipeline":      "pg_dump | psql",
+			"schema":        harness.Namespace,
+			"publications":  false,
+			"subscriptions": false,
+		}
 	case "mysql-mysql":
 		return map[string]any{"pipeline": "mysqldump | mysql"}
 	}
