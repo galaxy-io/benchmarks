@@ -49,8 +49,9 @@ system's user cache directory at `galaxy-benchmarks/taxi`; later repetitions
 reuse successfully downloaded files. Dataset generation, download, source
 loading, and destination validation are outside the timed transfer window.
 
-Remote publication cohorts use one immutable source seed, a fresh sink per
-repetition, and `-cold-rds` to reboot the SQL endpoints before every timed run.
+Remote result cohorts intended for publication use one immutable source seed,
+a fresh sink per repetition, and `-cold-rds` to reboot the SQL endpoints before
+every timed run.
 The seed is loaded, vacuumed, frozen, and analyzed once before the first
 repetition, and its row-count manifest is passed to adapters, so setup and
 validation do not scan the source. Setup, the configured post-reboot settling
@@ -78,25 +79,34 @@ endpoint. Set the ends the selected routes need; `-route all` needs all of them.
 ```sh
 export BENCH_SOURCE_POSTGRES_DSN='postgresql://bench:...@pg-source:5432/bench?sslmode=require'
 export BENCH_SINK_POSTGRES_DSN='postgresql://bench:...@pg-sink:5432/bench?sslmode=require'
-export BENCH_SOURCE_MYSQL_DSN='mysql://bench:...@my-source:3306/bench?tls=true'
-export BENCH_SINK_MYSQL_DSN='mysql://bench:...@my-sink:3306/bench?tls=true'
+export BENCH_SOURCE_MYSQL_DSN='mysql://bench:...@my-source:3306/bench?tls=skip-verify'
+export BENCH_SINK_MYSQL_DSN='mysql://bench:...@my-sink:3306/bench?tls=skip-verify'
 export BENCH_SINK_ICEBERG_DSN='s3://bench-warehouse-0a1b2c3d'
 export AWS_REGION='us-east-2'
 export BENCH_SOURCE_POSTGRES_LABEL='rds-pg-source'
 export BENCH_MACHINE='c7i.16xlarge'
 
 go run ./cmd/bench run \
+  -cohort tpch-sf1-all \
   -topology remote \
   -scenario full-load \
+  -sut all \
+  -route all \
   -dataset tpch -sf 1 \
-  -route pg-pg -sut all \
+  -reuse-seed -cold-rds \
   -reps 5 -timeout 24h
 ```
 
+A repetition is one fresh execution of a SUT/route pair. A sweep is one command
+that runs multiple SUT/route pairs. A cohort is the shared result identity set
+by `-cohort`. Choose a new cohort name for each published run or calibration
+attempt; result files are immutable.
+
 `-timeout` bounds each repetition, including provisioning, seeding, setup,
 transfer, and validation. Some startup and cleanup operations have shorter
-component-specific deadlines. Reference parallelism is explicit: 32 for
-Filament, OLake, Debezium, and Ingestr, and 16 for dlt. Debezium uses
+component-specific deadlines. The one-time source seed created by `-reuse-seed`
+happens before the repetition timeouts. Reference parallelism is explicit: 32
+for Filament, OLake, Debezium, and Ingestr, and 16 for dlt. Debezium uses
 32,768-row batches and Airbyte connectors have 16 GiB limits.
 `BENCH_AIRBYTE_CONNECTOR_MEMORY`, `BENCH_DEBEZIUM_BATCH_SIZE`, and
 `BENCH_DLT_BATCH_SIZE` remain calibration overrides; effective values are
@@ -126,8 +136,14 @@ and sink services with Testcontainers for every repetition.
 
 ```sh
 go run ./cmd/bench list
-go run ./cmd/bench run -topology local -route pg-pg -sut filament -sf 0.01
-go run ./cmd/bench run -topology local -route all -sut all -sf 0.01
+go run ./cmd/bench run \
+  -cohort smoke-filament \
+  -topology local \
+  -scenario full-load \
+  -sut filament \
+  -route pg-pg \
+  -dataset tpch -sf 0.01 \
+  -reps 1 -timeout 1h
 ```
 
 `hybrid` mode is also available and requires exactly one remote end per selected
@@ -142,12 +158,6 @@ kept separate. Files are written without overwriting an earlier invocation:
 results/{date}/{cohort}/{sut}/{scenario}-{route}-{dataset}-{topology}.json
 ```
 
-Render one cohort with:
-
-```sh
-python3 results/scripts/generate.py 2026-08-14 --cohort 20260814T120000Z
-```
-
 See [results/METHODOLOGY.md](results/METHODOLOGY.md) for measurement details and
 [infra/README.md](infra/README.md) for the AWS environment.
 
@@ -160,6 +170,6 @@ data-movement/
 ├── harness         timing, engines, sampling, validation, and results
 ├── infra           Terraform for the remote benchmark environment
 ├── provider        Testcontainers and remote endpoint providers
-├── results         methodology, raw cohorts, and page generator
+├── results         methodology and raw cohorts
 └── sut             one adapter per system under test
 ```
