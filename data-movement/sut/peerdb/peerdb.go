@@ -2,14 +2,12 @@
 // stack rather than a binary: a catalog database, Temporal and its admin tools,
 // the flow API, a general worker, a snapshot worker, and the server that speaks
 // the postgres wire protocol. The whole stack starts during untimed Setup; the
-// timed window is one CREATE MIRROR with an initial copy. Like Debezium, the
-// mirror keeps streaming after the snapshot lands, so convergence on the
-// destination row counts is completion.
+// timed window is one CREATE MIRROR configured for an initial snapshot only.
+// PeerDB marks the flow completed when that snapshot lands.
 package peerdb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -39,7 +37,7 @@ const (
 	ServerImage       = "ghcr.io/peerdb-io/peerdb-server:" + Version
 )
 
-// pollInterval paces the convergence check against the destination.
+// pollInterval paces status checks against PeerDB's catalog.
 const pollInterval = 500 * time.Millisecond
 
 const slotCleanupTimeout = 10 * time.Second
@@ -55,6 +53,7 @@ const slotCleanupTimeout = 10 * time.Second
 // the product is what has to be held.
 var Options = map[string]any{
 	"doInitialCopy":               true,
+	"initialCopyOnly":             true,
 	"snapshotMaxParallelWorkers":  32,
 	"snapshotNumTablesInParallel": 2,
 	"snapshotNumRowsPerPartition": 750000,
@@ -65,9 +64,9 @@ type PeerDB struct {
 	route      string
 	containers []tc.Container
 	server     string // host address of the peerdb server's wire protocol
+	catalogDSN string
 	env        *harness.Env
 	tables     []string
-	expected   map[string]int64
 	mirror     string
 }
 
@@ -88,21 +87,12 @@ func (p *PeerDB) Config() map[string]any { return Options }
 // on both ends and the one its own benchmarks report.
 func (p *PeerDB) Routes() []string { return []string{"pg-pg"} }
 
-// Setup starts the stack, registers both peers, and accepts the source counts
-// from the seed manifest so preparation never scans the source.
+// Setup starts the stack and registers both peers.
 func (p *PeerDB) Setup(ctx context.Context, env *harness.Env, tables []string) error {
 	p.env = env
 	p.tables = tables
 	p.mirror = "bench_" + strings.ReplaceAll(env.RunID, "-", "_")
 
-	p.expected = make(map[string]int64, len(tables))
-	for _, t := range tables {
-		n, ok := env.Expected[t]
-		if !ok {
-			return fmt.Errorf("seed manifest has no row count for %s", t)
-		}
-		p.expected[t] = n
-	}
 	// PeerDB creates the destination tables but not the schema holding them.
 	sink, err := env.Sink.Open()
 	if err != nil {
@@ -140,8 +130,9 @@ func (p *PeerDB) start(ctx context.Context, env *harness.Env) error {
 
 	// The catalog holds PeerDB's own metadata and backs Temporal's store.
 	catalog, err := p.run(ctx, env, catalogAlias, tc.ContainerRequest{
-		Image: CatalogImage,
-		Cmd:   []string{"-c", "wal_level=logical"},
+		Image:        CatalogImage,
+		Cmd:          []string{"-c", "wal_level=logical"},
+		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "postgres",
 			"POSTGRES_PASSWORD": "postgres",
@@ -153,7 +144,15 @@ func (p *PeerDB) start(ctx context.Context, env *harness.Env) error {
 	if err != nil {
 		return fmt.Errorf("peerdb catalog: %w", err)
 	}
-	_ = catalog
+	catalogHost, err := catalog.Host(ctx)
+	if err != nil {
+		return err
+	}
+	catalogPort, err := catalog.MappedPort(ctx, "5432")
+	if err != nil {
+		return err
+	}
+	p.catalogDSN = fmt.Sprintf("postgres://postgres:postgres@%s:%s/postgres?sslmode=disable", catalogHost, catalogPort.Port())
 
 	if _, err := p.run(ctx, env, temporalAlias, tc.ContainerRequest{
 		Image: TemporalImage,
@@ -306,9 +305,8 @@ func createPeer(name string, db *harness.DB) (string, error) {
 		strings.TrimPrefix(u.Path, "/")), nil
 }
 
-// Run creates the mirror and blocks until every table converges on the sink.
-// CREATE MIRROR returns once the workflow is accepted, so the initial copy runs
-// after it and convergence is what ends the timed window.
+// Run creates the mirror and blocks until PeerDB reports that its initial-only
+// snapshot completed. CREATE MIRROR returns once the workflow is accepted.
 func (p *PeerDB) Run(ctx context.Context) error {
 	conn, err := pgx.Connect(ctx, p.server)
 	if err != nil {
@@ -324,6 +322,7 @@ func (p *PeerDB) Run(ctx context.Context) error {
 	stmt := fmt.Sprintf(`CREATE MIRROR %s FROM bench_source TO bench_sink
  WITH TABLE MAPPING (%s)
  WITH (do_initial_copy = true,
+ initial_copy_only = true,
  snapshot_num_rows_per_partition = %d,
  snapshot_max_parallel_workers = %d,
  snapshot_num_tables_in_parallel = %d)`,
@@ -335,45 +334,32 @@ func (p *PeerDB) Run(ctx context.Context) error {
 		return fmt.Errorf("create mirror: %w", err)
 	}
 
-	sink, err := p.env.Sink.Open()
+	catalog, err := pgx.Connect(ctx, p.catalogDSN)
 	if err != nil {
-		return fmt.Errorf("open sink: %w", err)
+		return fmt.Errorf("connect peerdb catalog: %w", err)
 	}
-	defer func() { _ = sink.Close() }()
+	defer func() { _ = catalog.Close(ctx) }()
 
-	remaining := append([]string(nil), p.tables...)
 	for {
-		remaining, err = p.advance(ctx, sink, remaining)
-		if err != nil {
-			return err
+		var status int
+		err := catalog.QueryRow(ctx, "SELECT status FROM flows WHERE name = $1", p.mirror).Scan(&status)
+		if err != nil && err != pgx.ErrNoRows {
+			return fmt.Errorf("read peerdb mirror status: %w", err)
 		}
-		if len(remaining) == 0 {
-			return nil
+		if err == nil {
+			switch status {
+			case 8: // STATUS_COMPLETED: initial-only snapshot finished.
+				return nil
+			case 10: // STATUS_FAILED
+				return fmt.Errorf("peerdb mirror failed")
+			}
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("peerdb: %s never converged: %w", strings.Join(remaining, ", "), ctx.Err())
+			return fmt.Errorf("peerdb mirror did not finish its snapshot: %w", ctx.Err())
 		case <-time.After(pollInterval):
 		}
 	}
-}
-
-// advance pops every table whose sink count reached the source count. An
-// initial copy cannot overshoot, so a count above the source is a hard failure.
-func (p *PeerDB) advance(ctx context.Context, sink *sql.DB, remaining []string) ([]string, error) {
-	for len(remaining) > 0 {
-		t := remaining[0]
-		var n int64
-		q := fmt.Sprintf("SELECT count(*) FROM %s.%s", harness.Namespace, t)
-		if err := sink.QueryRowContext(ctx, q).Scan(&n); err != nil || n < p.expected[t] {
-			return remaining, nil
-		}
-		if n > p.expected[t] {
-			return remaining, fmt.Errorf("peerdb: %s has %d rows on the sink, source has %d", t, n, p.expected[t])
-		}
-		remaining = remaining[1:]
-	}
-	return remaining, nil
 }
 
 // Teardown drops the mirror, then removes the stack newest first so dependents
