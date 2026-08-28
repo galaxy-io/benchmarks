@@ -52,6 +52,8 @@ func (s *Sling) Config() map[string]any {
 		"mode":              "full-refresh",
 		"tableParallel":     true,
 		"processesPerTable": 1,
+		"directInsert":      true,
+		"useBulk":           true,
 		"cliPro":            false,
 	}
 }
@@ -91,8 +93,9 @@ func (s *Sling) Setup(ctx context.Context, env *harness.Env, tables []string) er
 			Entrypoint: []string{"sh", "-c"},
 			Cmd:        []string{"sleep infinity"},
 			Env: map[string]string{
-				"BENCH_SLING_SOURCE": env.Source.InternalDSN,
-				"BENCH_SLING_TARGET": env.Sink.InternalDSN,
+				"BENCH_SLING_SOURCE":  env.Source.InternalDSN,
+				"BENCH_SLING_TARGET":  env.Sink.InternalDSN,
+				"SLING_DIRECT_INSERT": "true",
 			},
 			Labels:   map[string]string{harness.LabelRun: env.RunID, harness.LabelRole: "sling"},
 			Networks: []string{env.Net.Name},
