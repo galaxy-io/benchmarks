@@ -1,123 +1,115 @@
 # Methodology
 
-Every published number traces back to a raw JSON result produced by the same
-harness. Remote databases are the primary topology. Local Testcontainers runs
-are for development and are never mixed into a remote result cohort.
+Every published number comes from a raw JSON result produced by this harness.
+Remote databases are the reference topology. Local Testcontainers runs are for
+development and are never compared with remote results.
 
-## Repetitions and timing
+## Terms
 
-A benchmark is one scenario, route, dataset, and SUT. A remote cohort with
-`-reuse-seed` loads its source seed once, before any repetition. Every seeded
-table is vacuumed, frozen, and analyzed as part of the load, so the first
-reader finds settled pages and no autovacuum runs against it. Each repetition
-then:
+- A **repetition** is one fresh execution of one SUT and route.
+- A **benchmark result** combines the repetitions for one scenario, route,
+  dataset, SUT, and topology.
+- A **sweep** is one command that runs multiple SUT/route pairs.
+- A **cohort** is the shared result identity passed with `-cohort`.
 
-1. Creates an isolated Docker network for the SUT.
-2. Resets the remote sink or creates fresh Testcontainers databases in local
-   mode. A remote Iceberg sink receives a fresh S3 prefix and REST catalog.
-3. Reuses the cohort's immutable remote source seed and its saved row-count
-   manifest. Local runs and remote runs without `-reuse-seed` seed per rep.
-4. With `-cold-rds`, reboots the remote SQL endpoints concurrently and waits for
+## What is timed
+
+The measured wall time starts when the harness triggers the prepared transfer.
+It ends when the adapter reports completion. Process initialization after that
+trigger is included.
+
+The following work is outside the measured wall time:
+
+- database provisioning and source seeding;
+- dataset generation or download;
+- image pulls, dependency installation, and container startup;
+- discovery, connector registration, and other SUT setup;
+- RDS reboot, recovery, and settling;
+- destination validation and SUT teardown.
+
+Most adapters complete when their process or job exits successfully. Streaming
+systems such as Debezium and PeerDB complete when every destination table reaches
+the expected source row count.
+
+`-timeout` bounds each complete repetition, not just its measured transfer. A
+one-time source seed created by `-reuse-seed` happens before the repetition
+timeouts. Some setup and cleanup operations also have shorter internal limits.
+
+## What happens in each repetition
+
+1. The harness creates an isolated Docker network and an empty destination.
+   Remote SQL sinks have the `bench` namespace reset; remote Iceberg sinks use a
+   fresh warehouse prefix and REST catalog.
+2. With `-reuse-seed`, every repetition reads the same immutable remote source
+   seed and saved row-count manifest. Without it, the source is seeded again.
+3. With `-cold-rds`, remote SQL endpoints reboot together. The harness waits for
    RDS availability, SQL connectivity, and the configured settling period.
-5. Starts and configures the SUT. Image pulls, dependency installation,
-   discovery, connector registration, and container startup are setup and are
-   not timed.
-6. Waits until no autovacuum worker is running on either PostgreSQL endpoint,
-   failing the repetition if one is still running after `-quiesce-timeout`.
-7. Captures database health, starts the prepared transfer, and measures until
-   the adapter's completion
-   condition is met. Most adapters wait for a process or job to finish;
-   Debezium waits for destination row counts to reach the source counts.
-   Process initialization after the start trigger is timed.
-8. Captures post-run health, tears down the SUT, captures replication-slot state,
-   and verifies the destination against the seed manifest.
+4. The SUT is started and configured. Before timing begins, the harness also
+   waits for PostgreSQL autovacuum to become idle.
+5. The prepared transfer runs inside the measured window.
+6. The harness captures final health data, tears down the SUT, and validates the
+   destination.
 
-The configured timeout applies independently to each repetition and covers
-provisioning, seeding, setup, transfer, and validation. Some component startup
-and cleanup operations have shorter deadlines. Results report median wall time
-and rows per second, plus the fastest and slowest repetition. Multi-SUT sweeps
-rotate their starting SUT each repetition to distribute run-order effects.
+Multi-SUT sweeps rotate their starting SUT between repetitions to spread
+run-order effects.
 
-## Validation
+## Correctness
 
-After the timed run, the harness compares source and destination row counts for
-each table. It does not compare row contents.
+Every destination table must have the row count recorded in the immutable seed
+manifest. A mismatch fails that SUT/route result, and no JSON result is written
+for it. The harness verifies row counts, not row contents.
 
-If any table differs, that SUT and route fail and no result JSON is written for
-them. Validation may scan table indexes or data to compute `COUNT(*)`, but it
-does not sort or transfer row contents.
+## Reported measurements
 
-## Resource measurement
+Each result reports median wall time and rows per second, plus the fastest and
+slowest repetition. It also records:
 
-The harness samples labeled Docker containers every 100 ms. CPU and network
-counters are reported as deltas over the timed window. Each container's memory
-value is its highest sample during that window. The report sums these
-per-container peaks for a SUT; the peaks may occur at different times. Sampling
-captures image tags and immutable Docker image IDs.
+- effective SUT configuration and image identity;
+- endpoint topology and labels;
+- host hardware and harness commit/dirty state;
+- Docker CPU, peak memory, and network use during the measured window;
+- row-count validation for every destination table.
 
-On remote runs Docker metrics describe the SUT containers only. RDS resource
-use is reported separately through database counter snapshots and CloudWatch,
-including CPU, memory, IOPS, throughput, latency, disk queue, network, storage,
-and PostgreSQL replication-slot lag. Terraform also publishes one-second OS
-metrics through RDS Enhanced Monitoring. S3 resource use remains outside the
-Docker totals.
+Docker containers are sampled every 100 ms. CPU and network values are deltas
+over the measured window. Memory is each container's highest sample; summed
+container peaks may have occurred at different times.
 
-## Configuration and tuning
+For remote RDS endpoints, database snapshots and CloudWatch points report CPU,
+memory, I/O, latency, queue depth, network, storage, and replication-slot lag.
+Terraform also enables one-second Enhanced Monitoring by default. S3 resource
+use is not included in Docker totals.
 
-Each adapter records its extraction, write, batch, worker, and completion
-settings where applicable. Discovery and other preparation run before the timed
-window. Effective settings are stored in every result file.
+## Fair comparison and tuning
 
-Reference parallelism is SUT-specific: 32 workers for Filament, OLake,
+All SUTs use normal database durability settings and the same row-count
+validation. Setup and discovery remain outside the timer for every adapter.
+
+Each SUT is tuned before a published cohort, and that configuration stays fixed
+for all of its repetitions even if it performs worse. Effective values are
+stored in the result. Reference parallelism is 32 workers for Filament, OLake,
 Debezium, and Ingestr, and 16 normalize/load workers for dlt. Debezium uses
-32,768-row source and sink batches with a four-batch queue. Adapter-specific
-batch and memory overrides are available for calibration. Tuning must be chosen
-before the published cohort, applied equally to every repetition for that SUT,
-and retained even when the result is slower.
-Row-count validation and database durability settings are not changed during
-tuning.
+32,768-row source and sink batches; Airbyte connector containers have a 16 GiB
+limit each. Adapter-specific environment overrides are for calibration runs.
 
-Airbyte connector containers default to a 16 GiB limit each. The limit prevents
-the JVM from sizing itself from the entire host. The effective limit is recorded
-with the result.
-
-## Topology and hardware
+## Reference environment
 
 The reference SUT host is an AWS `c7i.16xlarge` in `us-east-2`: 64 vCPU,
-128 GiB of memory, Ubuntu 24.04, and a 750 GB gp3 volume configured for 16,000
-IOPS and 1,000 MB/s. Each remote database role uses a separate RDS instance;
-the default is `db.m6i.8xlarge` with 32 vCPU, 128 GiB of memory, and provisioned
-gp3 storage. All endpoints are placed in one availability zone.
+128 GiB memory, Ubuntu 24.04, and a 750 GB gp3 volume with 16,000 IOPS and
+1,000 MB/s throughput.
 
-Two remote SQL databases must use distinct host/port endpoints. DSN credentials,
-database names, query parameters, hostname case, and default ports do not bypass
-that check. An Iceberg sink is identified by its S3 warehouse instead. Remote SQL
-namespaces are reset before each repetition; remote Iceberg repetitions use
-separate warehouse prefixes. Both give discovery-based tools a clean destination
-without including database startup time in the measurement.
+Each SQL source and sink is a separate RDS instance in the same availability
+zone. The default is `db.m6i.8xlarge` with 32 vCPU, 128 GiB memory, and
+provisioned gp3 storage. Remote source and sink endpoints must be distinct.
 
-Local Postgres and MySQL containers receive benchmark-sized buffer, WAL/redo,
-and checkpoint settings while retaining normal durability. Local numbers are a
-different topology and must not be compared directly with remote results.
+Local Postgres and MySQL use benchmark-sized buffer, WAL/redo, and checkpoint
+settings while retaining normal durability. Local and remote numbers must not
+be mixed.
 
-## Provenance and result layout
+## Result files
 
-Each result records the SUT image description, immutable sampled image IDs,
-effective configuration, endpoint providers and labels, host hardware, harness
-commit and dirty state, timings, resource samples, and row-count validation.
+Results are immutable and include enough provenance to identify their SUT,
+data, machine, endpoints, configuration, and code revision:
 
 ```text
-results/
-  METHODOLOGY.md
-  scripts/
-  {date}/
-    {cohort}/
-      index.html
-      {sut}/
-        {scenario}-{route}-{dataset}-{topology}.json
+results/{date}/{cohort}/{sut}/{scenario}-{route}-{dataset}-{topology}.json
 ```
-
-The page generator rejects mixed cohorts, topologies, machines, harness
-revisions, verification modes, row totals, and repetition counts. Endpoint
-metadata must match within a route; different routes may use different engines
-and endpoints on the same page.

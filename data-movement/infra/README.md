@@ -38,13 +38,14 @@ The RDS instances and benchmark host share an availability zone. Database ports
 accept traffic only from the SUT host security group, and RDS is not publicly
 accessible. Postgres has logical replication enabled. MySQL retains automated
 backups because RDS requires them for binlog availability. Both engines require
-encrypted client connections; Terraform emits Postgres DSNs with
-`sslmode=require` and MySQL DSNs with `tls=true`.
+encrypted client connections. Terraform emits Postgres DSNs with
+`sslmode=require` and MySQL DSNs with `tls=skip-verify`; both encrypt traffic
+without requiring the RDS CA in each SUT image.
 
-## Provision a route
+## Provision remote endpoints
 
-Provision the full six-route environment. A smaller cohort needs only the ends
-used by its selected routes.
+Provision the endpoints needed for the full six-route sweep. A smaller route
+selection needs only its source and sink ends.
 
 ```sh
 terraform init
@@ -82,7 +83,7 @@ git clone git@github.com:galaxy-io/benchmarks.git
 cd benchmarks/data-movement
 ```
 
-Ship the environment block from the provisioning machine, then run the cohort in
+Ship the environment block from the provisioning machine, then run the sweep in
 `tmux`:
 
 ```sh
@@ -96,9 +97,21 @@ terraform output -raw bench_env |
 # on the host
 source ~/.bench.env
 export BENCH_MACHINE='c7i.16xlarge'
+tmux new -s bench
+```
 
-tmux new -s bench \
-  'go run ./cmd/bench run -topology remote -sut all -route all -reuse-seed -cold-rds -reps 5 -sf 1 -timeout 24h'
+Inside `tmux`, use the same canonical remote command as the main README:
+
+```sh
+go run ./cmd/bench run \
+  -cohort tpch-sf1-all \
+  -topology remote \
+  -scenario full-load \
+  -sut all \
+  -route all \
+  -dataset tpch -sf 1 \
+  -reuse-seed -cold-rds \
+  -reps 5 -timeout 24h
 ```
 
 `-cold-rds` reboots the SQL endpoints concurrently before each repetition,
@@ -109,8 +122,12 @@ before/after snapshots when the Terraform RDS identifiers are present.
 `-route all` needs every end of every route present, so the run stops before
 provisioning if a variable is missing, naming the one it wanted.
 
-`-timeout` applies to each repetition. Use a different cohort for configuration
-calibration; do not mix calibration trials into published results.
+`-timeout` applies independently to each repetition and covers provisioning,
+seeding, setup, transfer, and validation. The one-time source seed created by
+`-reuse-seed` happens before the repetition timeouts. A repetition is one fresh
+execution of a SUT/route pair, a sweep is one command containing multiple pairs,
+and a cohort is their shared result identity. Choose a new `-cohort` for
+calibration; do not mix calibration trials into a published cohort.
 
 ## Tear down
 
