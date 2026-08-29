@@ -107,7 +107,8 @@ transfer, and validation. Some startup and cleanup operations have shorter
 component-specific deadlines. The one-time source seed created by `-reuse-seed`
 happens before the repetition timeouts. Reference parallelism is explicit: 32
 for Filament, OLake, Debezium, and Ingestr, and 16 for dlt. Debezium uses
-32,768-row batches and Airbyte connectors have 16 GiB limits.
+32,768-row engine/sink batches, 10,240-row snapshot fetches, and a JVM heap of
+up to half the container memory. Airbyte connectors have 16 GiB limits.
 `BENCH_AIRBYTE_CONNECTOR_MEMORY`, `BENCH_DEBEZIUM_BATCH_SIZE`, and
 `BENCH_DLT_BATCH_SIZE` remain calibration overrides; effective values are
 written into the result.

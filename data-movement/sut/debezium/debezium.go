@@ -31,6 +31,12 @@ const pollInterval = 500 * time.Millisecond
 // BENCH_DEBEZIUM_BATCH_SIZE can override it before a benchmark cohort.
 const defaultBatchSize = 32768
 
+// Keep source-side snapshot buffering at Debezium's documented PostgreSQL
+// default. It is allocated per snapshot thread, unlike the sink batch.
+const snapshotFetchSize = 10240
+
+const javaToolOptions = "-XX:InitialRAMPercentage=10 -XX:MaxRAMPercentage=50"
+
 // Debezium runs Debezium Server with the JDBC sink.
 type Debezium struct {
 	route     string
@@ -67,10 +73,11 @@ func (d *Debezium) Config() map[string]any {
 		"sink":               "jdbc",
 		"snapshotMode":       "initial_only",
 		"snapshotMaxThreads": d.workers,
-		"snapshotFetchSize":  d.batchSize,
+		"snapshotFetchSize":  snapshotFetchSize,
 		"maxBatchSize":       d.batchSize,
 		"maxQueueSize":       d.batchSize * 4,
 		"sinkBatchSize":      d.batchSize,
+		"heapMaxRAMPercent":  50,
 		"insertMode":         "insert",
 		"primaryKeyMode":     "none",
 		"schemaEvolution":    "basic",
@@ -118,6 +125,7 @@ func (d *Debezium) Setup(ctx context.Context, env *harness.Env, tables []string)
 			Image:      Image,
 			Entrypoint: []string{"/bin/sh", "-c"},
 			Cmd:        []string{"sleep infinity"},
+			Env:        map[string]string{"JAVA_TOOL_OPTIONS": javaToolOptions},
 			Files: []tc.ContainerFile{{
 				Reader:            strings.NewReader(props),
 				ContainerFilePath: "/debezium/config/application.properties",
@@ -244,8 +252,8 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.sink.jdbc.insert.mode=insert",
 		"debezium.sink.jdbc.primary.key.mode=none",
 		"debezium.sink.jdbc.schema.evolution=basic",
-		// Use the same calibrated size for source fetches, engine batches, and
-		// sink writes.
+		// Source fetches are per snapshot thread, so keep them bounded separately
+		// from the calibrated engine and sink batch size.
 		fmt.Sprintf("debezium.sink.jdbc.batch.size=%d", d.batchSize),
 		fmt.Sprintf("debezium.sink.jdbc.connection.pool.max_size=%d", d.workers),
 		// $$ keeps quarkus from expanding the placeholder before debezium sees it.
@@ -258,7 +266,7 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.source.table.include.list=" + strings.Join(qualified, ","),
 		"debezium.source.snapshot.mode=initial_only",
 		fmt.Sprintf("debezium.source.snapshot.max.threads=%d", d.workers),
-		fmt.Sprintf("debezium.source.snapshot.fetch.size=%d", d.batchSize),
+		fmt.Sprintf("debezium.source.snapshot.fetch.size=%d", snapshotFetchSize),
 		fmt.Sprintf("debezium.source.max.batch.size=%d", d.batchSize),
 		// Hold four batches in the queue. Debezium requires the queue size to
 		// exceed the batch size.
@@ -376,7 +384,10 @@ func (d *Debezium) processRunning(ctx context.Context) (bool, error) {
 }
 
 func (d *Debezium) logs(ctx context.Context) string {
-	_, out, err := d.exec(ctx, []string{"/bin/sh", "-c", "tail -c 4000 /tmp/debezium.log"})
+	// JSON exceptions can exceed the generic output cap. Keep the beginning of
+	// the final error record, which contains its type and database message.
+	cmd := `line=$(grep -E '"level":"(ERROR|FATAL)"' /tmp/debezium.log | tail -n 1); if [ -n "$line" ]; then printf '%s\n' "$line" | cut -c 1-3500; else tail -c 3500 /tmp/debezium.log; fi`
+	_, out, err := d.exec(ctx, []string{"/bin/sh", "-c", cmd})
 	if err != nil {
 		return "(logs unavailable)"
 	}
