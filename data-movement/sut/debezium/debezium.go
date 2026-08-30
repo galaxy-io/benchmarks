@@ -22,20 +22,24 @@ import (
 	"github.com/galaxy-io/benchmarks/data-movement/harness"
 )
 
-const Image = "quay.io/debezium/server:3.6.0.Final"
+const Image = "quay.io/debezium/server:3.6.1.Final"
 
 // pollInterval paces the convergence check against the sink.
 const pollInterval = 500 * time.Millisecond
 
-// defaultBatchSize is used for source fetches, engine batches, and sink writes.
+// defaultBatchSize is used for engine batches and sink writes.
 // BENCH_DEBEZIUM_BATCH_SIZE can override it before a benchmark cohort.
-const defaultBatchSize = 32768
+const defaultBatchSize = 8192
 
 // Keep source-side snapshot buffering at Debezium's documented PostgreSQL
 // default. It is allocated per snapshot thread, unlike the sink batch.
 const snapshotFetchSize = 10240
 
-const javaToolOptions = "-XX:InitialRAMPercentage=10 -XX:MaxRAMPercentage=50"
+const recordProcessingThreads = 8
+
+const maxQueueBytes = 1 << 30
+
+const javaToolOptions = "-Xms8g -Xmx64g"
 
 // Debezium runs Debezium Server with the JDBC sink.
 type Debezium struct {
@@ -53,7 +57,7 @@ type Debezium struct {
 // New returns the debezium tool for a route.
 func New(route string) *Debezium {
 	return &Debezium{
-		route: route, workers: 32,
+		route: route, workers: 8,
 		batchSize: tuningInt("BENCH_DEBEZIUM_BATCH_SIZE", defaultBatchSize),
 	}
 }
@@ -73,11 +77,14 @@ func (d *Debezium) Config() map[string]any {
 		"sink":               "jdbc",
 		"snapshotMode":       "initial_only",
 		"snapshotMaxThreads": d.workers,
+		"legacySnapshotMode": true,
 		"snapshotFetchSize":  snapshotFetchSize,
+		"recordThreads":      recordProcessingThreads,
 		"maxBatchSize":       d.batchSize,
 		"maxQueueSize":       d.batchSize * 4,
+		"maxQueueBytes":      maxQueueBytes,
 		"sinkBatchSize":      d.batchSize,
-		"heapMaxRAMPercent":  50,
+		"heapGiB":            64,
 		"insertMode":         "insert",
 		"primaryKeyMode":     "none",
 		"schemaEvolution":    "basic",
@@ -266,11 +273,14 @@ func (d *Debezium) properties(env *harness.Env, tables []string) (string, error)
 		"debezium.source.table.include.list=" + strings.Join(qualified, ","),
 		"debezium.source.snapshot.mode=initial_only",
 		fmt.Sprintf("debezium.source.snapshot.max.threads=%d", d.workers),
+		"debezium.source.legacy.snapshot.max.threads=true",
 		fmt.Sprintf("debezium.source.snapshot.fetch.size=%d", snapshotFetchSize),
+		fmt.Sprintf("debezium.source.record.processing.threads=%d", recordProcessingThreads),
 		fmt.Sprintf("debezium.source.max.batch.size=%d", d.batchSize),
 		// Hold four batches in the queue. Debezium requires the queue size to
 		// exceed the batch size.
 		fmt.Sprintf("debezium.source.max.queue.size=%d", d.batchSize*4),
+		fmt.Sprintf("debezium.source.max.queue.size.in.bytes=%d", maxQueueBytes),
 		"debezium.source.offset.storage.file.filename=/tmp/offsets.dat",
 		"debezium.source.offset.flush.interval.ms=1000",
 	}
