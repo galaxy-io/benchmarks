@@ -33,7 +33,9 @@ the expected source row count.
 
 `-timeout` bounds each complete repetition, not just its measured transfer. A
 one-time source seed created by `-reuse-seed` happens before the repetition
-timeouts. Some setup and cleanup operations also have shorter internal limits.
+timeouts, and `-keep-seed` leaves that seed in place for a following invocation
+that reads the same dataset. Some setup and cleanup operations also have shorter
+internal limits.
 
 ## What happens in each repetition
 
@@ -58,6 +60,9 @@ run-order effects.
 Every destination table must have the row count recorded in the immutable seed
 manifest. A mismatch fails that SUT/route result, and no JSON result is written
 for it. The harness verifies row counts, not row contents.
+
+Each SUT/route pair writes its result when its own last repetition finishes. A
+pair that fails leaves the results already written by the others untouched.
 
 ## Reported measurements
 
@@ -116,3 +121,7 @@ data, machine, endpoints, configuration, and code revision:
 ```text
 results/{date}/{cohort}/{sut}/{scenario}-{route}-{dataset}-{topology}.json
 ```
+
+The date is the UTC day the invocation started, so a run that passes midnight
+still files under one date. `-date` sets it explicitly, which keeps a session of
+several invocations together.

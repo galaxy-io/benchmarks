@@ -165,6 +165,7 @@ func run(args []string) error {
 	sutName := fs.String("sut", sut.Names[0], "system under test, or all")
 	dataset := fs.String("dataset", datanames[0], "dataset to seed")
 	reuseSeed := fs.Bool("reuse-seed", false, "seed the remote source once for the sweep, wiping it at the end")
+	keepSeed := fs.Bool("keep-seed", false, "leave the reusable seed on the source so the next invocation reuses it")
 	coldRDS := fs.Bool("cold-rds", false, "reboot remote SQL endpoints before every timed repetition")
 	rdsMetrics := fs.Bool("rds-metrics", true, "capture RDS CloudWatch and database health metrics when RDS IDs are present")
 	rdsSettle := fs.Duration("rds-settle", 30*time.Second, "quiet period after RDS recovery and SUT setup")
@@ -177,6 +178,7 @@ func run(args []string) error {
 	topology := fs.String("topology", topologies[0], "database placement: local containers, remote DSNs, or exactly one of each (hybrid)")
 	cohort := fs.String("cohort", time.Now().UTC().Format("20060102T150405Z"), "result cohort shared by every combination in this invocation")
 	machine := fs.String("machine", os.Getenv("BENCH_MACHINE"), "machine label recorded in results, for example c7i.16xlarge")
+	day := fs.String("date", "", "UTC date directory for results as YYYY-MM-DD, so a session of several invocations files together; defaults to the day this invocation starts")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -212,10 +214,21 @@ func run(args []string) error {
 	if *dataset == "tpch" && *sf <= 0 {
 		return fmt.Errorf("TPC-H scale factor must be positive, got %v", *sf)
 	}
+	if *keepSeed && !*reuseSeed {
+		return fmt.Errorf("-keep-seed needs -reuse-seed; without it every repetition seeds its own source")
+	}
+	if *day != "" {
+		if _, err := time.Parse("2006-01-02", *day); err != nil {
+			return fmt.Errorf("-date must be YYYY-MM-DD, got %q", *day)
+		}
+	}
 
 	ctx := context.Background()
 
-	sweep := *sutName == "all" || *route == "all"
+	// One named SUT on one named route is an exact request, so an unsupported
+	// pair is an error rather than an empty run. Any wider selection describes a
+	// set, and a member that cannot run the route is simply not in it.
+	exact := len(sutList) == 1 && *route != "all"
 	routeList := []string{*route}
 	if *route == "all" {
 		routeList = routes
@@ -247,14 +260,14 @@ func run(args []string) error {
 		for _, sn := range sutList {
 			meta := sut.New(sn, rt)
 			if !slices.Contains(meta.Routes(), rt) {
-				if !sweep {
+				if exact {
 					return fmt.Errorf("sut %q does not run route %q (runs: %s)",
 						sn, rt, strings.Join(meta.Routes(), ", "))
 				}
 				log.Printf("skip %s %s: route not supported", sn, rt)
 				continue
 			}
-			combo, err := newBenchmarkCombo(*scenario, rt, sn, sd, *topology, *cohort, *machine)
+			combo, err := newBenchmarkCombo(*scenario, rt, sn, sd, *topology, *cohort, *machine, *day)
 			if err != nil {
 				return fmt.Errorf("%s/%s: %w", sn, rt, err)
 			}
@@ -277,12 +290,19 @@ func run(args []string) error {
 	if err := prepareSeeds(ctx, routeList, *topology, sd); err != nil {
 		return err
 	}
-	if err := runCombos(ctx, combos, sd, *reps, *out, runCfg, *timeout, sweep); err != nil {
+	// A lone combination has nothing to survive its failure, so it reports the
+	// error directly. Anything wider carries on and names what failed at the end.
+	if err := runCombos(ctx, combos, sd, *reps, *out, runCfg, *timeout, len(combos) > 1); err != nil {
 		return err
 	}
-	// The sweep is over, so the seed it shared has no next reader. Leaving it
-	// would strand the dataset on the source and sit beside the next one,
-	// which loads its own tables without touching these.
+	// The sweep is over, so the seed it shared has no next reader unless the
+	// caller says another invocation wants it. Leaving it otherwise would
+	// strand the dataset on the source and sit beside the next one, which
+	// loads its own tables without touching these.
+	if *keepSeed {
+		log.Printf("keeping the %s seed on the source", sd.label())
+		return nil
+	}
 	return wipeSeeds(ctx, routeList, *topology, sd)
 }
 
@@ -302,7 +322,7 @@ type runConfig struct {
 	rds        *harness.RDSControl
 }
 
-func newBenchmarkCombo(scenario, route, sutName string, sd *seed, topology, cohort, machine string) (*benchmarkCombo, error) {
+func newBenchmarkCombo(scenario, route, sutName string, sd *seed, topology, cohort, machine, day string) (*benchmarkCombo, error) {
 	if err := validateDistinctRemoteEndpoints(route, topology); err != nil {
 		return nil, err
 	}
@@ -324,6 +344,7 @@ func newBenchmarkCombo(scenario, route, sutName string, sd *seed, topology, coho
 		Native:       sutName == "native",
 		Config:       meta.Config(),
 		StartedAt:    time.Now(),
+		Day:          day,
 		Machine:      machine,
 		Verification: "row-count",
 	}}, nil
@@ -331,7 +352,9 @@ func newBenchmarkCombo(scenario, route, sutName string, sd *seed, topology, coho
 
 // runCombos rotates the first combination each repetition. A remote sweep
 // therefore does not give one SUT every cold run and another every warm run.
-func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int, out string, cfg runConfig, timeout time.Duration, sweep bool) error {
+// Each combination writes its own result the moment its last repetition lands,
+// so a failure later in the sweep cannot discard finished work.
+func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int, out string, cfg runConfig, timeout time.Duration, tolerate bool) error {
 	for i := range reps {
 		for offset := range len(combos) {
 			combo := combos[(i+offset)%len(combos)]
@@ -351,9 +374,12 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int
 				combo.result.Reps = append(combo.result.Reps, rep)
 				log.Printf("%s %s rep %d/%d: %.3fs (%.0f rows/s), parity pass=%v",
 					combo.sutName, combo.route, i+1, reps, rep.WallSeconds, rep.RowsPerSec, rep.ParityPass)
+				if i == reps-1 {
+					writeCombo(out, combo)
+				}
 			}
 			if combo.err != nil {
-				if !sweep {
+				if !tolerate {
 					return combo.err
 				}
 				log.Printf("FAIL %s %s: %v", combo.sutName, combo.route, combo.err)
@@ -363,24 +389,7 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int
 
 	var failed []string
 	for _, combo := range combos {
-		if combo.err == nil {
-			combo.result.Aggregate()
-			if !combo.result.ParityPass {
-				combo.err = fmt.Errorf("parity failed; invalid results were not written")
-			}
-		}
-		if combo.err == nil {
-			path, err := harness.WriteResult(out, combo.result)
-			if err != nil {
-				combo.err = err
-			} else {
-				printResult(combo.result, path)
-			}
-		}
 		if combo.err != nil {
-			if !sweep {
-				return combo.err
-			}
 			failed = append(failed, combo.sutName+"/"+combo.route)
 		}
 	}
@@ -388,6 +397,22 @@ func runCombos(ctx context.Context, combos []*benchmarkCombo, sd *seed, reps int
 		return fmt.Errorf("failed: %s", strings.Join(failed, ", "))
 	}
 	return nil
+}
+
+// writeCombo aggregates a finished combination and writes its result, recording
+// any failure on the combination itself.
+func writeCombo(out string, combo *benchmarkCombo) {
+	combo.result.Aggregate()
+	if !combo.result.ParityPass {
+		combo.err = fmt.Errorf("parity failed; invalid results were not written")
+		return
+	}
+	path, err := harness.WriteResult(out, combo.result)
+	if err != nil {
+		combo.err = err
+		return
+	}
+	printResult(combo.result, path)
 }
 
 // validateTopologyDSNs checks every selected route against the topology before

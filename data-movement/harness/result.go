@@ -121,7 +121,11 @@ type Result struct {
 	Config map[string]any `json:"config,omitempty"`
 
 	StartedAt time.Time `json:"startedAt"`
-	Reps      []Rep     `json:"reps"`
+	// Day overrides the date directory so a session spread over several
+	// invocations, and possibly over midnight, files under one date. It is not
+	// serialized: StartedAt already records when this result began.
+	Day  string `json:"-"`
+	Reps []Rep  `json:"reps"`
 
 	MedianWallSeconds float64 `json:"medianWallSeconds"`
 	MinWallSeconds    float64 `json:"minWallSeconds"`
@@ -198,11 +202,16 @@ func CheckParity(ctx context.Context, sink *DB, tables []string, expected map[st
 	return out, pass, nil
 }
 
-// ResultPath returns the immutable output path for a result.
+// ResultPath returns the immutable output path for a result. Day names the date
+// directory; empty means the UTC day the invocation started on.
 func ResultPath(dir string, r *Result) string {
 	name := fmt.Sprintf("%s-%s-%s-%s.json",
 		safeSlug(r.Scenario), safeSlug(r.Route), safeSlug(r.Dataset), safeSlug(r.Topology))
-	return filepath.Join(dir, r.StartedAt.UTC().Format("2006-01-02"), safeSlug(r.Cohort), safeSlug(r.SUT), name)
+	day := r.Day
+	if day == "" {
+		day = r.StartedAt.UTC().Format("2006-01-02")
+	}
+	return filepath.Join(dir, safeSlug(day), safeSlug(r.Cohort), safeSlug(r.SUT), name)
 }
 
 // WriteResult writes a result under its date and cohort without overwriting an

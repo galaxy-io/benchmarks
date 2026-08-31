@@ -105,7 +105,13 @@ attempt; result files are immutable.
 `-timeout` bounds each repetition, including provisioning, seeding, setup,
 transfer, and validation. Some startup and cleanup operations have shorter
 component-specific deadlines. The one-time source seed created by `-reuse-seed`
-happens before the repetition timeouts. Reference parallelism is explicit: 32
+happens before the repetition timeouts, and `-keep-seed` leaves it on the
+source for the next invocation covering the same dataset. Each SUT/route pair
+writes its own result as its last repetition lands, so a failure elsewhere in a
+sweep does not discard finished work. The date directory comes from the moment
+an invocation starts, so a long run does not drift into the next day; `-date`
+pins it explicitly, which files a session of several invocations together.
+Reference parallelism is explicit: 32
 for Filament, OLake, and Ingestr, 16 for dlt, and 8 for Debezium. Debezium uses
 table-parallel snapshots, 8,192-row engine/sink batches, 10,240-row snapshot
 fetches, a 1 GiB queue byte limit, and a 64 GiB JVM heap. Airbyte connectors
