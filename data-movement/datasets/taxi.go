@@ -65,10 +65,10 @@ const (
 
 	// yellow 2011 onward: the harmonized modern layout.
 	yellowModernSelect = `SELECT
- COALESCE(VendorID, 0), tpep_pickup_datetime, tpep_dropoff_datetime,
- COALESCE(passenger_count, 0), COALESCE(trip_distance, 0), COALESCE(RatecodeID, 0),
- COALESCE(store_and_fwd_flag, ''), COALESCE(PULocationID, 0), COALESCE(DOLocationID, 0),
- COALESCE(payment_type, 0), COALESCE(fare_amount, 0), COALESCE(extra, 0), COALESCE(mta_tax, 0),
+ COALESCE(TRY_CAST(VendorID AS INTEGER), 0), tpep_pickup_datetime, tpep_dropoff_datetime,
+ COALESCE(TRY_CAST(passenger_count AS INTEGER), 0), COALESCE(trip_distance, 0), COALESCE(TRY_CAST(RatecodeID AS INTEGER), 0),
+ COALESCE(store_and_fwd_flag, ''), COALESCE(TRY_CAST(PULocationID AS INTEGER), 0), COALESCE(TRY_CAST(DOLocationID AS INTEGER), 0),
+ COALESCE(TRY_CAST(payment_type AS INTEGER), 0), COALESCE(fare_amount, 0), COALESCE(extra, 0), COALESCE(mta_tax, 0),
  COALESCE(tip_amount, 0), COALESCE(tolls_amount, 0), COALESCE(improvement_surcharge, 0),
  COALESCE(total_amount, 0), COALESCE(congestion_surcharge, 0), COALESCE(Airport_fee, 0)`
 

@@ -87,9 +87,12 @@ validation. Setup and discovery remain outside the timer for every adapter.
 Each SUT is tuned before a published cohort, and that configuration stays fixed
 for all of its repetitions even if it performs worse. Effective values are
 stored in the result. Reference parallelism is 32 workers for Filament, OLake,
-Debezium, and Ingestr, and 16 normalize/load workers for dlt. Debezium uses
-32,768-row source and sink batches; Airbyte connector containers have a 16 GiB
-limit each. Adapter-specific environment overrides are for calibration runs.
+and Ingestr, 16 normalize/load workers for dlt, and 8 configured snapshot and
+conversion workers for Debezium. Debezium uses its table-parallel snapshot mode
+(therefore two active snapshot readers for Taxi), 8,192-row engine/sink batches,
+10,240-row snapshot fetches, a 1 GiB queue byte limit, and a 64 GiB JVM heap.
+Airbyte connector containers have a 16 GiB limit each. Adapter-specific
+environment overrides are for calibration runs.
 
 ## Reference environment
 
