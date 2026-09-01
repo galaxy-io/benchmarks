@@ -1,0 +1,4023 @@
+{
+  "sut": "airbyte",
+  "scenario": "full-load",
+  "route": "pg-pg",
+  "dataset": "tpch-sf1",
+  "rows": 8661245,
+  "cohort": "tpch-sf1-3route",
+  "topology": "remote",
+  "source": {
+    "engine": "postgres",
+    "provider": "remote"
+  },
+  "sink": {
+    "engine": "postgres",
+    "provider": "remote"
+  },
+  "image": "airbyte/source-postgres:3.8.1 | airbyte/destination-postgres:3.0.13",
+  "native": false,
+  "config": {
+    "connectorMemory": "16g",
+    "replicationMethod": "Standard",
+    "syncMode": "full_refresh/overwrite",
+    "typeDedupe": true
+  },
+  "startedAt": "2026-08-31T15:58:46.696093736Z",
+  "reps": [
+    {
+      "startedAt": "2026-08-31T16:10:26.17600264Z",
+      "endedAt": "2026-08-31T16:12:28.636990657Z",
+      "coldStart": {
+        "rebootSeconds": 64.212612186,
+        "settleSeconds": 30
+      },
+      "provisionSeconds": 1.476959444,
+      "seedSeconds": 0.00000508,
+      "setupSeconds": 16.219974698,
+      "wallSeconds": 122.460988017,
+      "teardownSeconds": 10.67294469,
+      "validationSeconds": 0.224702748,
+      "rowsPerSec": 70726.56476360984,
+      "resources": [
+        {
+          "role": "airbyte",
+          "image": "docker:28-cli",
+          "imageId": "sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d",
+          "cpuSeconds": 33.85162,
+          "peakMemBytes": 25690112,
+          "netRxBytes": 140,
+          "netTxBytes": 0,
+          "samples": 1218
+        },
+        {
+          "role": "airbyte-destination",
+          "image": "airbyte/destination-postgres:3.0.13",
+          "imageId": "sha256:0b310bd46ba0e006757ea3dc1d3b8ef8e3bcf51c3a96f5460a836653b5ac4f4c",
+          "cpuSeconds": 123.318587,
+          "peakMemBytes": 1602912256,
+          "netRxBytes": 5487927,
+          "netTxBytes": 1975937646,
+          "samples": 1215
+        },
+        {
+          "role": "airbyte-source",
+          "image": "airbyte/source-postgres:3.8.1",
+          "imageId": "sha256:ae277c604d1c97dbaa2bdfe119caaf4e976701e28d2c2b9f08a2e4b537c99225",
+          "cpuSeconds": 73.68894,
+          "peakMemBytes": 8206540800,
+          "netRxBytes": 1657812739,
+          "netTxBytes": 12955835,
+          "samples": 1206
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "countMatch": true,
+          "match": true
+        }
+      ],
+      "parityPass": true,
+      "databases": [
+        {
+          "role": "source",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-source-postgres-0baae1d8d646fece9c1662520e",
+          "before": {
+            "capturedAt": "2026-08-31T16:10:26.111415147Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 705937,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41707,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 251,
+              "bgwriter.checkpointWriteMillis": 210885,
+              "bgwriter.checkpointsRequested": 11,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10600730,
+              "database.blocksRead": 852511,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 8770388,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 52662697,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1011,
+              "io.hits": 10881619,
+              "io.reads": 859897,
+              "io.reuses": 330157,
+              "io.writebacks": 42744,
+              "io.writes": 317054,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655640686,
+              "wal.fullPageImages": 3345,
+              "wal.records": 9278552,
+              "wal.syncMillis": 1128.269,
+              "wal.syncs": 620,
+              "wal.writeMillis": 599.785,
+              "wal.writes": 1411
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:12:28.658862365Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 854917,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41707,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 251,
+              "bgwriter.checkpointWriteMillis": 210885,
+              "bgwriter.checkpointsRequested": 11,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10611788,
+              "database.blocksRead": 1001475,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 8776000,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 61353457,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1011,
+              "io.hits": 10899518,
+              "io.reads": 1008874,
+              "io.reuses": 330157,
+              "io.writebacks": 42744,
+              "io.writes": 317054,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655641521,
+              "wal.fullPageImages": 3347,
+              "wal.records": 9278558,
+              "wal.syncMillis": 1130.184,
+              "wal.syncs": 622,
+              "wal.writeMillis": 599.802,
+              "wal.writes": 1413
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:12:39.370097344Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 854917,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41707,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 251,
+              "bgwriter.checkpointWriteMillis": 210885,
+              "bgwriter.checkpointsRequested": 11,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10613094,
+              "database.blocksRead": 1001475,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 8776772,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 61355622,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1011,
+              "io.hits": 10901210,
+              "io.reads": 1008874,
+              "io.reuses": 330157,
+              "io.writebacks": 42744,
+              "io.writes": 317054,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655641521,
+              "wal.fullPageImages": 3347,
+              "wal.records": 9278558,
+              "wal.syncMillis": 1130.184,
+              "wal.syncs": 622,
+              "wal.writeMillis": 599.802,
+              "wal.writes": 1413
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 1.2116666666666667
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0.28333333333333327
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.8016666666666666
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 95280992256
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 95286820864
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 95278084096
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 95279652864
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 1
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.004583351111407412
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0.0009333191669027739
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.0013830964295439355
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0.00033342419144657894
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 3.6833947232453874
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1.8996833861023164
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 2.8833813896898284
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 1.0333161113981433
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.3666055657390435
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0.46679114430514806
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.0008
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.0004
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.000952998379254457
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.00028571428571428574
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0.00008163265306122449
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 1365.3333333333333
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 682.5529078486919
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 47650.13333333333
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 5597.773370443826
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 2115.914014330945
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 3346.0147041661803
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 77562.6
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 2827.5833333333335
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 181017.31349252636
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 1888.3183568677791
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 27047685.716666665
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 20541
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 23911320.424588826
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 18545.6712735275
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 1565262266368
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 1565262258176
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1565262258176
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 1565262258176
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 2013274112
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 2013274112
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 2013274112
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 2013274112
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "role": "sink",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-sink-postgres-1f3219900af6c5b9ac076ee8c8",
+          "before": {
+            "capturedAt": "2026-08-31T16:10:26.126689408Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 983798,
+              "bgwriter.buffersBackend": 739852,
+              "bgwriter.buffersCheckpoint": 61357,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 62,
+              "bgwriter.checkpointWriteMillis": 40631,
+              "bgwriter.checkpointsRequested": 12,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 59652071,
+              "database.blocksRead": 489836,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 2599,
+              "database.tuplesFetched": 84873,
+              "database.tuplesInserted": 43267581,
+              "database.tuplesReturned": 52040919,
+              "database.tuplesUpdated": 706,
+              "io.evictions": 0,
+              "io.extends": 973293,
+              "io.fsyncs": 1370,
+              "io.hits": 59943576,
+              "io.reads": 497315,
+              "io.reuses": 487527,
+              "io.writebacks": 62394,
+              "io.writes": 527801,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 52635,
+              "wal.bytes": 8405722559,
+              "wal.fullPageImages": 122862,
+              "wal.records": 27442723,
+              "wal.syncMillis": 3356.915,
+              "wal.syncs": 1160,
+              "wal.writeMillis": 2731.968,
+              "wal.writes": 54542
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:12:28.678753928Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 1202626,
+              "bgwriter.buffersBackend": 739852,
+              "bgwriter.buffersCheckpoint": 61357,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 62,
+              "bgwriter.checkpointWriteMillis": 40631,
+              "bgwriter.checkpointsRequested": 12,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 71591871,
+              "database.blocksRead": 673044,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 2618,
+              "database.tuplesFetched": 127608,
+              "database.tuplesInserted": 51929294,
+              "database.tuplesReturned": 52092536,
+              "database.tuplesUpdated": 893,
+              "io.evictions": 0,
+              "io.extends": 1275637,
+              "io.fsyncs": 1370,
+              "io.hits": 71887687,
+              "io.reads": 680544,
+              "io.reuses": 754302,
+              "io.writebacks": 62394,
+              "io.writes": 746216,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 50000,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 7,
+              "table.lineitem.autovacuums": 6,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 501215,
+              "table.lineitem.liveTuples": 6000819,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 1,
+              "table.orders.autovacuums": 1,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 900000,
+              "table.orders.liveTuples": 1400000,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 799986,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 0,
+              "table.supplier.autovacuums": 0,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 10000,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 52635,
+              "wal.bytes": 11175270884,
+              "wal.fullPageImages": 123001,
+              "wal.records": 36751447,
+              "wal.syncMillis": 4654.071,
+              "wal.syncs": 1594,
+              "wal.writeMillis": 3565.681,
+              "wal.writes": 54981
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:12:39.389284843Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 1206778,
+              "bgwriter.buffersBackend": 739852,
+              "bgwriter.buffersCheckpoint": 61357,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 62,
+              "bgwriter.checkpointWriteMillis": 40631,
+              "bgwriter.checkpointsRequested": 12,
+              "bgwriter.checkpointsTimed": 5,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 71665676,
+              "database.blocksRead": 696464,
+              "database.deadlocks": 0,
+              "database.tempBytes": 0,
+              "database.tempFiles": 0,
+              "database.tuplesDeleted": 2628,
+              "database.tuplesFetched": 129019,
+              "database.tuplesInserted": 51929321,
+              "database.tuplesReturned": 52095339,
+              "database.tuplesUpdated": 918,
+              "io.evictions": 0,
+              "io.extends": 1275642,
+              "io.fsyncs": 1370,
+              "io.hits": 71961883,
+              "io.reads": 703964,
+              "io.reuses": 773575,
+              "io.writebacks": 62394,
+              "io.writes": 756316,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 2,
+              "table.customer.autovacuums": 2,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 7,
+              "table.lineitem.autovacuums": 6,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 501215,
+              "table.lineitem.liveTuples": 6000819,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 2,
+              "table.orders.autovacuums": 2,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1499973,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 799986,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 52635,
+              "wal.bytes": 11177033118,
+              "wal.fullPageImages": 123005,
+              "wal.records": 36780546,
+              "wal.syncMillis": 4661.732,
+              "wal.syncs": 1606,
+              "wal.writeMillis": 3566.377,
+              "wal.writes": 54994
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 2.158333333333333
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0.29
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1.21
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 95362473984
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 95358279680
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 95343931392
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 95334535168
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 3
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 3
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.7029578570912707
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0.001016618891175815
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.5167592613404918
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0.9150913855816047
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 3.683210559648012
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1.9003483972061546
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 415.9694676844105
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0.9833005566481118
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 327.9267865775392
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 573.4046631001784
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.0004
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.0008
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 0.0025938013662243835
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 0.0027172305271439814
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0.002689344855152461
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 1365.3105781570307
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 682.7918451716148
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 29702399.89333511
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 4983.217505791377
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 19972958.77577556
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 35676697.23180508
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 24414998.250029165
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 1834.5221825939136
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 10198476.262710452
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 16394876.10619469
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 200129.69783836935
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 18913.152894903502
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 46797.716286047675
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 62789.32720030665
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 1563389173760
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 1563389173760
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 1562658684928
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 1561491062784
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:09:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:10:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:11:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:12:00Z",
+                  "value": 5301608448
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "startedAt": "2026-08-31T16:34:28.859485503Z",
+      "endedAt": "2026-08-31T16:36:28.129333289Z",
+      "coldStart": {
+        "rebootSeconds": 82.934773528,
+        "settleSeconds": 30
+      },
+      "provisionSeconds": 1.493753206,
+      "seedSeconds": 0.000004868,
+      "setupSeconds": 4.252696098,
+      "wallSeconds": 119.269847786,
+      "teardownSeconds": 10.681974354,
+      "validationSeconds": 0.249087088,
+      "rowsPerSec": 72618.89874748934,
+      "resources": [
+        {
+          "role": "airbyte",
+          "image": "docker:28-cli",
+          "imageId": "sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d",
+          "cpuSeconds": 33.81895,
+          "peakMemBytes": 26198016,
+          "netRxBytes": 210,
+          "netTxBytes": 0,
+          "samples": 1189
+        },
+        {
+          "role": "airbyte-destination",
+          "image": "airbyte/destination-postgres:3.0.13",
+          "imageId": "sha256:0b310bd46ba0e006757ea3dc1d3b8ef8e3bcf51c3a96f5460a836653b5ac4f4c",
+          "cpuSeconds": 119.714357,
+          "peakMemBytes": 1470791680,
+          "netRxBytes": 4497613,
+          "netTxBytes": 1975364760,
+          "samples": 1186
+        },
+        {
+          "role": "airbyte-source",
+          "image": "airbyte/source-postgres:3.8.1",
+          "imageId": "sha256:ae277c604d1c97dbaa2bdfe119caaf4e976701e28d2c2b9f08a2e4b537c99225",
+          "cpuSeconds": 77.853465,
+          "peakMemBytes": 7129411584,
+          "netRxBytes": 1657786963,
+          "netTxBytes": 12562397,
+          "samples": 1177
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "countMatch": true,
+          "match": true
+        }
+      ],
+      "parityPass": true,
+      "databases": [
+        {
+          "role": "source",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-source-postgres-0baae1d8d646fece9c1662520e",
+          "before": {
+            "capturedAt": "2026-08-31T16:34:28.803555272Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 1801512,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41727,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 287,
+              "bgwriter.checkpointWriteMillis": 211499,
+              "bgwriter.checkpointsRequested": 18,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10767952,
+              "database.blocksRead": 1944871,
+              "database.deadlocks": 0,
+              "database.tempBytes": 1004065987,
+              "database.tempFiles": 67,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 17512933,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 130940314,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1029,
+              "io.hits": 11147670,
+              "io.reads": 1955482,
+              "io.reuses": 330157,
+              "io.writebacks": 42764,
+              "io.writes": 317074,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655673442,
+              "wal.fullPageImages": 3364,
+              "wal.records": 9278619,
+              "wal.syncMillis": 1179.994,
+              "wal.syncs": 657,
+              "wal.writeMillis": 619.546,
+              "wal.writes": 1448
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:36:28.142294695Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 1950501,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41727,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 287,
+              "bgwriter.checkpointWriteMillis": 211499,
+              "bgwriter.checkpointsRequested": 18,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10779010,
+              "database.blocksRead": 2093835,
+              "database.deadlocks": 0,
+              "database.tempBytes": 1004065987,
+              "database.tempFiles": 67,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 17518545,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 139631074,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1029,
+              "io.hits": 11165544,
+              "io.reads": 2104458,
+              "io.reuses": 330157,
+              "io.writebacks": 42764,
+              "io.writes": 317074,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655674444,
+              "wal.fullPageImages": 3366,
+              "wal.records": 9278626,
+              "wal.syncMillis": 1182.884,
+              "wal.syncs": 660,
+              "wal.writeMillis": 619.588,
+              "wal.writes": 1451
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:36:38.856875977Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 1950501,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41727,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 287,
+              "bgwriter.checkpointWriteMillis": 211499,
+              "bgwriter.checkpointsRequested": 18,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10780243,
+              "database.blocksRead": 2093835,
+              "database.deadlocks": 0,
+              "database.tempBytes": 1004065987,
+              "database.tempFiles": 67,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 17519303,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 139632284,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1029,
+              "io.hits": 11167136,
+              "io.reads": 2104458,
+              "io.reuses": 330157,
+              "io.writebacks": 42764,
+              "io.writes": 317074,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655674444,
+              "wal.fullPageImages": 3366,
+              "wal.records": 9278626,
+              "wal.syncMillis": 1182.884,
+              "wal.syncs": 660,
+              "wal.writeMillis": 619.588,
+              "wal.writes": 1451
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 1.2183333333333333
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.3016616389726838
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.9133485558092633
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 95265144832
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 95267180544
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 95261675520
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 95260286976
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 1
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.005146980382881567
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.0010003617975751647
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.00016665833374997918
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0.0013504276354178823
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 3.681185974848005
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1.9006335445148383
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 3.031564920463063
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.9170029010637234
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.1833211119258716
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0.3167722574191397
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.0004
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0.0008
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.000782472613458529
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.00011764705882352942
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.0002666666666666667
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0.0005217391304347827
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 1364.537353210627
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 682.8942980993664
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 49464.47905388523
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 4643.83607322685
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 1023.9317378841411
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1775.5251750583527
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 36994.17006746065
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 3099.8699523158493
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 207113.72575161656
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1939.7789226229181
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 12459136.720246524
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 21192.737337023576
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 28146383.674421705
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 18654.62912019207
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 1565194924032
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 1565194924032
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 1565194924032
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1565194924032
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 2080382976
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 2080382976
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 2080382976
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 2080382976
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "role": "sink",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-sink-postgres-1f3219900af6c5b9ac076ee8c8",
+          "before": {
+            "capturedAt": "2026-08-31T16:34:28.819926988Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 2496100,
+              "bgwriter.buffersBackend": 2130497,
+              "bgwriter.buffersCheckpoint": 144476,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 104,
+              "bgwriter.checkpointWriteMillis": 147300,
+              "bgwriter.checkpointsRequested": 20,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 157512552,
+              "database.blocksRead": 1468022,
+              "database.deadlocks": 0,
+              "database.tempBytes": 173539328,
+              "database.tempFiles": 30,
+              "database.tuplesDeleted": 6272,
+              "database.tuplesFetched": 879976,
+              "database.tuplesInserted": 112556937,
+              "database.tuplesReturned": 1050167543,
+              "database.tuplesUpdated": 2086,
+              "io.evictions": 0,
+              "io.extends": 2504692,
+              "io.fsyncs": 2042,
+              "io.hits": 157948459,
+              "io.reads": 1478893,
+              "io.reuses": 1513106,
+              "io.writebacks": 145513,
+              "io.writes": 1567525,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 98056,
+              "wal.bytes": 21788281390,
+              "wal.fullPageImages": 278376,
+              "wal.records": 73453252,
+              "wal.syncMillis": 12338.599,
+              "wal.syncs": 5148,
+              "wal.writeMillis": 6873.754,
+              "wal.writes": 103996
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:36:28.158289894Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 2713379,
+              "bgwriter.buffersBackend": 2130497,
+              "bgwriter.buffersCheckpoint": 144476,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 104,
+              "bgwriter.checkpointWriteMillis": 147300,
+              "bgwriter.checkpointsRequested": 20,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 169437603,
+              "database.blocksRead": 1654644,
+              "database.deadlocks": 0,
+              "database.tempBytes": 173539328,
+              "database.tempFiles": 30,
+              "database.tuplesDeleted": 6289,
+              "database.tuplesFetched": 920959,
+              "database.tuplesInserted": 121218629,
+              "database.tuplesReturned": 1050216523,
+              "database.tuplesUpdated": 2246,
+              "io.evictions": 0,
+              "io.extends": 2807029,
+              "io.fsyncs": 2042,
+              "io.hits": 169888259,
+              "io.reads": 1668142,
+              "io.reuses": 1787442,
+              "io.writebacks": 145513,
+              "io.writes": 1786959,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 50000,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 5,
+              "table.lineitem.autovacuums": 5,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 901215,
+              "table.lineitem.liveTuples": 5904372,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 2,
+              "table.orders.autovacuums": 2,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500033,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 0,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800001,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 0,
+              "table.supplier.autovacuums": 0,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 10000,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 98056,
+              "wal.bytes": 24558166546,
+              "wal.fullPageImages": 278516,
+              "wal.records": 82768059,
+              "wal.syncMillis": 13622.758,
+              "wal.syncs": 5578,
+              "wal.writeMillis": 7705.156,
+              "wal.writes": 104434
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:36:38.871701407Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 2714916,
+              "bgwriter.buffersBackend": 2130497,
+              "bgwriter.buffersCheckpoint": 144476,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 104,
+              "bgwriter.checkpointWriteMillis": 147300,
+              "bgwriter.checkpointsRequested": 20,
+              "bgwriter.checkpointsTimed": 6,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 169488368,
+              "database.blocksRead": 1668033,
+              "database.deadlocks": 0,
+              "database.tempBytes": 173539328,
+              "database.tempFiles": 30,
+              "database.tuplesDeleted": 6298,
+              "database.tuplesFetched": 922435,
+              "database.tuplesInserted": 121218673,
+              "database.tuplesReturned": 1050219598,
+              "database.tuplesUpdated": 2278,
+              "io.evictions": 0,
+              "io.extends": 2807035,
+              "io.fsyncs": 2042,
+              "io.hits": 169928465,
+              "io.reads": 1678915,
+              "io.reuses": 1796683,
+              "io.writebacks": 145513,
+              "io.writes": 1789575,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 2,
+              "table.customer.autovacuums": 2,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 6,
+              "table.lineitem.autovacuums": 5,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 901215,
+              "table.lineitem.liveTuples": 6001602,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 2,
+              "table.orders.autovacuums": 2,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500033,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800001,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 98056,
+              "wal.bytes": 24558812068,
+              "wal.fullPageImages": 278527,
+              "wal.records": 82777432,
+              "wal.syncMillis": 13638.661,
+              "wal.syncs": 5590,
+              "wal.writeMillis": 7705.363,
+              "wal.writes": 104446
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 2.1149999999999998
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.2966666666666666
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 1.2066666666666666
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 95352758272
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 95348101120
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 95340879872
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 95331233792
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 2
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 2
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.730674437384083
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.001032989003665445
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.5832697473040641
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1.0076541970143946
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 3.6835789052603505
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1.9
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 434.77898526568435
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 1.0329890036654448
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 368.3578905260351
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 629.6
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.0006000000000000001
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 0.0024236675756460096
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0.00015789473684210527
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0.002911776585309561
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 0.002878572818683101
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 1365.4243616241083
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 682.6666666666666
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 29721533.435562372
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 5186.537820726425
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 22595451.96346423
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 39369659.733333334
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 24415810.600883406
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 1959.2642575098716
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 11256335.127927328
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 16923368.516666666
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 202219.06825568798
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 20443.394811815866
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 43910.5425452121
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 55577.65
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 1563522957312
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 1563522957312
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 1562697256960
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 1561490657280
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:33:00Z",
+                  "value": 5167390720
+                },
+                {
+                  "at": "2026-08-31T16:34:00Z",
+                  "value": 5167390720
+                },
+                {
+                  "at": "2026-08-31T16:35:00Z",
+                  "value": 5167390720
+                },
+                {
+                  "at": "2026-08-31T16:36:00Z",
+                  "value": 5167390720
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "startedAt": "2026-08-31T16:56:05.813793071Z",
+      "endedAt": "2026-08-31T16:58:08.17766488Z",
+      "coldStart": {
+        "rebootSeconds": 90.111906425,
+        "settleSeconds": 30
+      },
+      "provisionSeconds": 0.180373145,
+      "seedSeconds": 0.000005046,
+      "setupSeconds": 4.06807524,
+      "wallSeconds": 122.363871809,
+      "teardownSeconds": 10.696032589,
+      "validationSeconds": 0.217050149,
+      "rowsPerSec": 70782.69812775699,
+      "resources": [
+        {
+          "role": "airbyte",
+          "image": "docker:28-cli",
+          "imageId": "sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d",
+          "cpuSeconds": 34.054869,
+          "peakMemBytes": 24702976,
+          "netRxBytes": 140,
+          "netTxBytes": 0,
+          "samples": 1218
+        },
+        {
+          "role": "airbyte-destination",
+          "image": "airbyte/destination-postgres:3.0.13",
+          "imageId": "sha256:0b310bd46ba0e006757ea3dc1d3b8ef8e3bcf51c3a96f5460a836653b5ac4f4c",
+          "cpuSeconds": 123.53605,
+          "peakMemBytes": 1461362688,
+          "netRxBytes": 5474329,
+          "netTxBytes": 1975667492,
+          "samples": 1215
+        },
+        {
+          "role": "airbyte-source",
+          "image": "airbyte/source-postgres:3.8.1",
+          "imageId": "sha256:ae277c604d1c97dbaa2bdfe119caaf4e976701e28d2c2b9f08a2e4b537c99225",
+          "cpuSeconds": 71.394521,
+          "peakMemBytes": 7972532224,
+          "netRxBytes": 1657734953,
+          "netTxBytes": 12930755,
+          "samples": 1206
+        }
+      ],
+      "parity": [
+        {
+          "table": "region",
+          "source": 5,
+          "sink": 5,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "nation",
+          "source": 25,
+          "sink": 25,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "supplier",
+          "source": 10000,
+          "sink": 10000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "customer",
+          "source": 150000,
+          "sink": 150000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "part",
+          "source": 200000,
+          "sink": 200000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "partsupp",
+          "source": 800000,
+          "sink": 800000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "orders",
+          "source": 1500000,
+          "sink": 1500000,
+          "countMatch": true,
+          "match": true
+        },
+        {
+          "table": "lineitem",
+          "source": 6001215,
+          "sink": 6001215,
+          "countMatch": true,
+          "match": true
+        }
+      ],
+      "parityPass": true,
+      "databases": [
+        {
+          "role": "source",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-source-postgres-0baae1d8d646fece9c1662520e",
+          "before": {
+            "capturedAt": "2026-08-31T16:56:05.752880287Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 2897080,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41735,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 315,
+              "bgwriter.checkpointWriteMillis": 212132,
+              "bgwriter.checkpointsRequested": 25,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10934456,
+              "database.blocksRead": 3037231,
+              "database.deadlocks": 0,
+              "database.tempBytes": 2008131974,
+              "database.tempFiles": 134,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 26254602,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 209215022,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1037,
+              "io.hits": 11408891,
+              "io.reads": 3051040,
+              "io.reuses": 330157,
+              "io.writebacks": 42772,
+              "io.writes": 317082,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655680117,
+              "wal.fullPageImages": 3374,
+              "wal.records": 9278674,
+              "wal.syncMillis": 1231.899,
+              "wal.syncs": 691,
+              "wal.writeMillis": 642.155,
+              "wal.writes": 1482
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:58:08.205207365Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 3046060,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41735,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 315,
+              "bgwriter.checkpointWriteMillis": 212132,
+              "bgwriter.checkpointsRequested": 25,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10945514,
+              "database.blocksRead": 3186195,
+              "database.deadlocks": 0,
+              "database.tempBytes": 2008131974,
+              "database.tempFiles": 134,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 26260214,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 217905782,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1037,
+              "io.hits": 11426799,
+              "io.reads": 3200007,
+              "io.reuses": 330157,
+              "io.writebacks": 42772,
+              "io.writes": 317082,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655680117,
+              "wal.fullPageImages": 3374,
+              "wal.records": 9278674,
+              "wal.syncMillis": 1231.899,
+              "wal.syncs": 691,
+              "wal.writeMillis": 642.155,
+              "wal.writes": 1482
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:58:18.937492776Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 3046060,
+              "bgwriter.buffersBackend": 301704,
+              "bgwriter.buffersCheckpoint": 41735,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 315,
+              "bgwriter.checkpointWriteMillis": 212132,
+              "bgwriter.checkpointsRequested": 25,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 10946820,
+              "database.blocksRead": 3186195,
+              "database.deadlocks": 0,
+              "database.tempBytes": 2008131974,
+              "database.tempFiles": 134,
+              "database.tuplesDeleted": 481,
+              "database.tuplesFetched": 26260986,
+              "database.tuplesInserted": 8748964,
+              "database.tuplesReturned": 217907947,
+              "database.tuplesUpdated": 190,
+              "io.evictions": 0,
+              "io.extends": 175545,
+              "io.fsyncs": 1037,
+              "io.hits": 11428495,
+              "io.reads": 3200007,
+              "io.reuses": 330157,
+              "io.writebacks": 42772,
+              "io.writes": 317082,
+              "table._seed.analyzes": 0,
+              "table._seed.autoanalyzes": 0,
+              "table._seed.autovacuums": 0,
+              "table._seed.deadTuples": 0,
+              "table._seed.insertsSinceVacuum": 1,
+              "table._seed.liveTuples": 1,
+              "table._seed.vacuums": 0,
+              "table.customer.analyzes": 1,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 0,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 1,
+              "table.lineitem.analyzes": 1,
+              "table.lineitem.autoanalyzes": 0,
+              "table.lineitem.autovacuums": 0,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 0,
+              "table.lineitem.liveTuples": 6001162,
+              "table.lineitem.vacuums": 1,
+              "table.nation.analyzes": 1,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 50,
+              "table.nation.vacuums": 1,
+              "table.orders.analyzes": 1,
+              "table.orders.autoanalyzes": 0,
+              "table.orders.autovacuums": 0,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1500000,
+              "table.orders.vacuums": 1,
+              "table.part.analyzes": 1,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 1,
+              "table.partsupp.analyzes": 1,
+              "table.partsupp.autoanalyzes": 0,
+              "table.partsupp.autovacuums": 0,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800000,
+              "table.partsupp.vacuums": 1,
+              "table.region.analyzes": 1,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 10,
+              "table.region.vacuums": 1,
+              "table.supplier.analyzes": 1,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 1,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 45,
+              "wal.bytes": 1655680117,
+              "wal.fullPageImages": 3374,
+              "wal.records": 9278674,
+              "wal.syncMillis": 1231.899,
+              "wal.syncs": 691,
+              "wal.writeMillis": 642.155,
+              "wal.writes": 1482
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.57
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.29
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.8116666666666665
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 95255937024
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 95252803584
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 95253381120
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 95257227264
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 1
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.0048678836375760605
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.0021663264424683906
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.0001499900006666222
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0.00041669166819453937
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 3.684192978361618
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 1.8997150427435885
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 2.7506418164238324
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 1.016514189538236
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.16665555629624693
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0.4500300020001333
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.0004
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.0004
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.001194888178913738
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.00016438356164383562
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.0005714285714285715
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 1365.6747520213387
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 682.564282024363
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 48891.15612236392
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 5187.488543385159
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 955.6696220251984
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 3276.96384819241
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 2775.1937984496126
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 2797.1804229365594
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 178693.25378308113
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 40739.20362684801
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 27733.650079186464
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 19888.316752487128
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 23912638.19078728
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 4839488.174408721
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 1565127610368
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 1565127610368
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 1565127610368
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 1565127610368
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 2147491840
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 2147491840
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 2147491840
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 2147491840
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "role": "sink",
+          "engine": "postgres",
+          "rdsIdentifier": "bench-sink-postgres-1f3219900af6c5b9ac076ee8c8",
+          "before": {
+            "capturedAt": "2026-08-31T16:56:05.769382912Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 4048069,
+              "bgwriter.buffersBackend": 3461181,
+              "bgwriter.buffersCheckpoint": 217287,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 149,
+              "bgwriter.checkpointWriteMillis": 202703,
+              "bgwriter.checkpointsRequested": 28,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 278936998,
+              "database.blocksRead": 2348431,
+              "database.deadlocks": 0,
+              "database.tempBytes": 347095040,
+              "database.tempFiles": 60,
+              "database.tuplesDeleted": 9571,
+              "database.tuplesFetched": 2065501,
+              "database.tuplesInserted": 181847720,
+              "database.tuplesReturned": 2026432561,
+              "database.tuplesUpdated": 3476,
+              "io.evictions": 0,
+              "io.extends": 4114438,
+              "io.fsyncs": 2740,
+              "io.hits": 279511205,
+              "io.reads": 2362615,
+              "io.reuses": 2459839,
+              "io.writebacks": 218324,
+              "io.writes": 2505780,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 160511,
+              "wal.bytes": 36186105179,
+              "wal.fullPageImages": 442490,
+              "wal.records": 127936798,
+              "wal.syncMillis": 21978.986,
+              "wal.syncs": 9342,
+              "wal.writeMillis": 11483.832,
+              "wal.writes": 170685
+            }
+          },
+          "after": {
+            "capturedAt": "2026-08-31T16:58:08.22433909Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 4267117,
+              "bgwriter.buffersBackend": 3461181,
+              "bgwriter.buffersCheckpoint": 217287,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 149,
+              "bgwriter.checkpointWriteMillis": 202703,
+              "bgwriter.checkpointsRequested": 28,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 290893582,
+              "database.blocksRead": 2539864,
+              "database.deadlocks": 0,
+              "database.tempBytes": 347095040,
+              "database.tempFiles": 60,
+              "database.tuplesDeleted": 9587,
+              "database.tuplesFetched": 2106981,
+              "database.tuplesInserted": 190509429,
+              "database.tuplesReturned": 2026483014,
+              "database.tuplesUpdated": 3643,
+              "io.evictions": 0,
+              "io.extends": 4416812,
+              "io.fsyncs": 2740,
+              "io.hits": 291471855,
+              "io.reads": 2554069,
+              "io.reuses": 2734685,
+              "io.writebacks": 218324,
+              "io.writes": 2732203,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 50000,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 6,
+              "table.lineitem.autovacuums": 6,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 201215,
+              "table.lineitem.liveTuples": 5903152,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 1,
+              "table.orders.autovacuums": 1,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 400000,
+              "table.orders.liveTuples": 1400005,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800006,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 0,
+              "table.supplier.autovacuums": 0,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 10000,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 160511,
+              "wal.bytes": 38957095350,
+              "wal.fullPageImages": 442691,
+              "wal.records": 137268809,
+              "wal.syncMillis": 23261.58,
+              "wal.syncs": 9779,
+              "wal.writeMillis": 12321.593,
+              "wal.writes": 171127
+            }
+          },
+          "afterTeardown": {
+            "capturedAt": "2026-08-31T16:58:18.955993974Z",
+            "counters": {
+              "bgwriter.backendFsyncs": 0,
+              "bgwriter.buffersAllocated": 4271265,
+              "bgwriter.buffersBackend": 3461181,
+              "bgwriter.buffersCheckpoint": 217287,
+              "bgwriter.buffersClean": 0,
+              "bgwriter.checkpointSyncMillis": 149,
+              "bgwriter.checkpointWriteMillis": 202703,
+              "bgwriter.checkpointsRequested": 28,
+              "bgwriter.checkpointsTimed": 7,
+              "bgwriter.maxwrittenClean": 0,
+              "database.blocksHit": 290894814,
+              "database.blocksRead": 2539864,
+              "database.deadlocks": 0,
+              "database.tempBytes": 347095040,
+              "database.tempFiles": 60,
+              "database.tuplesDeleted": 9587,
+              "database.tuplesFetched": 2107739,
+              "database.tuplesInserted": 190509429,
+              "database.tuplesReturned": 2026484232,
+              "database.tuplesUpdated": 3643,
+              "io.evictions": 0,
+              "io.extends": 4416813,
+              "io.fsyncs": 2740,
+              "io.hits": 291498137,
+              "io.reads": 2557897,
+              "io.reuses": 2734685,
+              "io.writebacks": 218324,
+              "io.writes": 2732203,
+              "table.customer.analyzes": 0,
+              "table.customer.autoanalyzes": 1,
+              "table.customer.autovacuums": 1,
+              "table.customer.deadTuples": 0,
+              "table.customer.insertsSinceVacuum": 50000,
+              "table.customer.liveTuples": 150000,
+              "table.customer.vacuums": 0,
+              "table.lineitem.analyzes": 0,
+              "table.lineitem.autoanalyzes": 6,
+              "table.lineitem.autovacuums": 6,
+              "table.lineitem.deadTuples": 0,
+              "table.lineitem.insertsSinceVacuum": 201215,
+              "table.lineitem.liveTuples": 5903152,
+              "table.lineitem.vacuums": 0,
+              "table.nation.analyzes": 0,
+              "table.nation.autoanalyzes": 0,
+              "table.nation.autovacuums": 0,
+              "table.nation.deadTuples": 0,
+              "table.nation.insertsSinceVacuum": 25,
+              "table.nation.liveTuples": 25,
+              "table.nation.vacuums": 0,
+              "table.orders.analyzes": 0,
+              "table.orders.autoanalyzes": 1,
+              "table.orders.autovacuums": 2,
+              "table.orders.deadTuples": 0,
+              "table.orders.insertsSinceVacuum": 0,
+              "table.orders.liveTuples": 1485219,
+              "table.orders.vacuums": 0,
+              "table.part.analyzes": 0,
+              "table.part.autoanalyzes": 1,
+              "table.part.autovacuums": 1,
+              "table.part.deadTuples": 0,
+              "table.part.insertsSinceVacuum": 0,
+              "table.part.liveTuples": 200000,
+              "table.part.vacuums": 0,
+              "table.partsupp.analyzes": 0,
+              "table.partsupp.autoanalyzes": 1,
+              "table.partsupp.autovacuums": 1,
+              "table.partsupp.deadTuples": 0,
+              "table.partsupp.insertsSinceVacuum": 0,
+              "table.partsupp.liveTuples": 800006,
+              "table.partsupp.vacuums": 0,
+              "table.region.analyzes": 0,
+              "table.region.autoanalyzes": 0,
+              "table.region.autovacuums": 0,
+              "table.region.deadTuples": 0,
+              "table.region.insertsSinceVacuum": 5,
+              "table.region.liveTuples": 5,
+              "table.region.vacuums": 0,
+              "table.supplier.analyzes": 0,
+              "table.supplier.autoanalyzes": 1,
+              "table.supplier.autovacuums": 1,
+              "table.supplier.deadTuples": 0,
+              "table.supplier.insertsSinceVacuum": 0,
+              "table.supplier.liveTuples": 10000,
+              "table.supplier.vacuums": 0,
+              "vacuum.inProgress": 0,
+              "wal.buffersFull": 160511,
+              "wal.bytes": 38957095738,
+              "wal.fullPageImages": 442691,
+              "wal.records": 137268814,
+              "wal.syncMillis": 23265.608,
+              "wal.syncs": 9782,
+              "wal.writeMillis": 12321.896,
+              "wal.writes": 171131
+            }
+          },
+          "cloudWatch": [
+            {
+              "name": "CPUUtilization",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.3416666666666667
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.415
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 1.4433333333333331
+                }
+              ]
+            },
+            {
+              "name": "FreeableMemory",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 95337410560
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 95336026112
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 95320444928
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 95312703488
+                }
+              ]
+            },
+            {
+              "name": "DatabaseConnections",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 3
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 3
+                }
+              ]
+            },
+            {
+              "name": "DiskQueueDepth",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.008546503098052742
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.0013503639870542676
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.8521543461955162
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 1.0534331997231905
+                }
+              ]
+            },
+            {
+              "name": "ReadIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 3.6817992503123698
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 1.9005384859043395
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteIOPS",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 5.880882965431071
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.28341363386292784
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 535.6113009417452
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 667.2610615782019
+                }
+              ]
+            },
+            {
+              "name": "ReadLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.0006000000000000001
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.0008
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteLatency",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 0.00039735099337748344
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 0.001189189189189189
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0.002722380094261159
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0.0027034843473578954
+                }
+              ]
+            },
+            {
+              "name": "ReadThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 1364.764681382757
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 682.8487596692452
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 0
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "name": "WriteThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 89869.75426905457
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 2663.110162710056
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 32725124.960413367
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 40425848.94340377
+                }
+              ]
+            },
+            {
+              "name": "NetworkReceiveThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 2715.2972144475543
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 2332.0218724993333
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 15441480.023335278
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 18309132.088992584
+                }
+              ]
+            },
+            {
+              "name": "NetworkTransmitThroughput",
+              "stat": "Average",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 27881.21418099427
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 18890.537476660444
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 59829.50245853821
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 67193.46721106574
+                }
+              ]
+            },
+            {
+              "name": "FreeStorageSpace",
+              "stat": "Minimum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 1563388502016
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 1563388502016
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 1562282786816
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 1560960303104
+                }
+              ]
+            },
+            {
+              "name": "OldestReplicationSlotLag",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": -1
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": -1
+                }
+              ]
+            },
+            {
+              "name": "TransactionLogsDiskUsage",
+              "stat": "Maximum",
+              "points": [
+                {
+                  "at": "2026-08-31T16:55:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:56:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:57:00Z",
+                  "value": 5301608448
+                },
+                {
+                  "at": "2026-08-31T16:58:00Z",
+                  "value": 5301608448
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "medianWallSeconds": 122.363871809,
+  "minWallSeconds": 119.269847786,
+  "maxWallSeconds": 122.460988017,
+  "medianRowsPerSec": 70782.69812775699,
+  "parityPass": true,
+  "os": "linux",
+  "arch": "amd64",
+  "cpus": 64,
+  "cpuModel": "Intel(R) Xeon(R) Platinum 8488C",
+  "memoryBytes": 132894916608,
+  "goVersion": "go1.26.4",
+  "machine": "c7i.16xlarge",
+  "gitDirty": false,
+  "verification": "row-count"
+}
