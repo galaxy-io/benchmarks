@@ -1,6 +1,7 @@
 // Package olake runs OLake (github.com/datazip-inc/olake) from its official
-// per-source images: one container runs discover to build the streams catalog
-// (every bench table, full refresh, normalization on), then sync into Iceberg.
+// per-source images: one container runs discover to build the streams catalog,
+// which is then narrowed to the seeded tables (full refresh, normalization on),
+// then sync into Iceberg.
 package olake
 
 import (
@@ -21,6 +22,8 @@ import (
 const (
 	PostgresImage = "olakego/source-postgres:latest"
 	MySQLImage    = "olakego/source-mysql:latest"
+
+	catalogPath = "/mnt/config/streams.json"
 )
 
 // OLake runs the official image for the route's source engine.
@@ -99,9 +102,100 @@ sed -i -e 's/"sync_mode":[[:space:]]*"[a-z_]*"/"sync_mode":"full_refresh"/g' \
 	} else if code != 0 {
 		return fmt.Errorf("olake discover exited %d:\n%s", code, out)
 	}
+	// Discovery reports every table in the namespace, the harness seed marker
+	// among them. Every other adapter is told which tables to move, so narrow
+	// the catalog to the same list rather than copying more than the benchmark
+	// asked for.
+	if err := o.selectTables(ctx, tables); err != nil {
+		return err
+	}
 	o.syncCmd = []string{"/home/olake", "sync", "--config", "/mnt/config/source.json",
 		"--destination", "/mnt/config/destination.json", "--catalog", "/mnt/config/streams.json"}
 	return nil
+}
+
+// selectTables rewrites the discovered catalog in place, keeping only tables.
+func (o *OLake) selectTables(ctx context.Context, tables []string) error {
+	r, err := o.container.CopyFileFromContainer(ctx, catalogPath)
+	if err != nil {
+		return fmt.Errorf("read streams catalog: %w", err)
+	}
+	defer func() { _ = r.Close() }()
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read streams catalog: %w", err)
+	}
+	narrowed, err := selectStreams(raw, tables)
+	if err != nil {
+		return err
+	}
+	if err := o.container.CopyToContainer(ctx, narrowed, catalogPath, 0o644); err != nil {
+		return fmt.Errorf("write streams catalog: %w", err)
+	}
+	return nil
+}
+
+// selectStreams keeps only the named tables in a discovered OLake catalog. It
+// reports a table the catalog never offered rather than silently moving less
+// than the benchmark seeded.
+func selectStreams(raw []byte, tables []string) ([]byte, error) {
+	want := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		want[t] = true
+	}
+	var catalog map[string]any
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return nil, fmt.Errorf("parse streams catalog: %w", err)
+	}
+	found := map[string]bool{}
+	// selected_streams is what sync reads; streams carries the schemas. Both
+	// list the tables, under different keys, so both are narrowed.
+	if selected, ok := catalog["selected_streams"].(map[string]any); ok {
+		for namespace, entry := range selected {
+			list, ok := entry.([]any)
+			if !ok {
+				continue
+			}
+			kept := make([]any, 0, len(list))
+			for _, item := range list {
+				stream, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				name, _ := stream["stream_name"].(string)
+				if want[name] {
+					found[name] = true
+					kept = append(kept, item)
+				}
+			}
+			selected[namespace] = kept
+		}
+	}
+	if list, ok := catalog["streams"].([]any); ok {
+		kept := make([]any, 0, len(list))
+		for _, item := range list {
+			wrapper, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			stream, ok := wrapper["stream"].(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := stream["name"].(string)
+			if want[name] {
+				found[name] = true
+				kept = append(kept, item)
+			}
+		}
+		catalog["streams"] = kept
+	}
+	for _, t := range tables {
+		if !found[t] {
+			return nil, fmt.Errorf("olake discover found no stream for table %q", t)
+		}
+	}
+	return json.Marshal(catalog)
 }
 
 // Teardown removes the container.
